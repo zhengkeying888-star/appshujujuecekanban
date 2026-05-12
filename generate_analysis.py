@@ -92,6 +92,69 @@ for res in TARGET_RESOURCES:
     resource_efficiency.append({'resource': res, '2026-03': a3, '2026-04': a4, '环比': rmom})
 resource_efficiency.sort(key=lambda x: x['2026-04']['线索数'], reverse=True)
 
+# 3b. Resource health status (decline warning)
+print("Computing resource health status...")
+resource_health_status = []
+for r in resource_efficiency:
+    cvr_mom = r['环比']['转化率']['value']
+    status = '预警' if cvr_mom <= -10 else '正常'
+    resource_health_status.append({
+        'resource': r['resource'],
+        'cvr_mom': round(cvr_mom, 2),
+        'status': status
+    })
+
+# 3c. Resource × price band matrix
+print("Computing resource × price band matrix...")
+resource_price_band_matrix = []
+for res in TARGET_RESOURCES:
+    for pb in ['0元', '1.1元', '3.9元', '其他']:
+        row = {'resource': res, 'price_band': pb}
+        for month in ['2026-03', '2026-04']:
+            g = df[(df['广告资源位'] == res) & (df['price_band'] == pb) & (df['stat_month'] == month)]
+            leads = int(g['线索数'].sum())
+            orders = int(g['首单数'].sum())
+            gmv = float(g['首单流水'].sum())
+            cvr = orders / leads if leads > 0 else 0
+            row[month] = {
+                '线索数': leads,
+                '首单数': orders,
+                '首单流水': round(gmv, 2),
+                '转化率': round(cvr, 4)
+            }
+        rmom = {}
+        for key in ['线索数', '首单数', '首单流水', '转化率']:
+            v3 = row['2026-03'][key]
+            v4 = row['2026-04'][key]
+            pct = (v4 - v3) / v3 * 100 if v3 != 0 else (0 if v4 == 0 else 100)
+            rmom[key] = {'value': round(pct, 2), 'abs': round(v4 - v3, 2)}
+        row['环比'] = rmom
+        resource_price_band_matrix.append(row)
+
+# 3d. Resource × price band total (summary row)
+resource_price_band_total = {}
+for pb in ['0元', '1.1元', '3.9元', '其他']:
+    resource_price_band_total[pb] = {}
+    for month in ['2026-03', '2026-04']:
+        g = df[(df['price_band'] == pb) & (df['stat_month'] == month)]
+        leads = int(g['线索数'].sum())
+        orders = int(g['首单数'].sum())
+        gmv = float(g['首单流水'].sum())
+        cvr = orders / leads if leads > 0 else 0
+        resource_price_band_total[pb][month] = {
+            '线索数': leads,
+            '首单数': orders,
+            '首单流水': round(gmv, 2),
+            '转化率': round(cvr, 4)
+        }
+    rmom = {}
+    for key in ['线索数', '首单数', '首单流水', '转化率']:
+        v3 = resource_price_band_total[pb]['2026-03'][key]
+        v4 = resource_price_band_total[pb]['2026-04'][key]
+        pct = (v4 - v3) / v3 * 100 if v3 != 0 else (0 if v4 == 0 else 100)
+        rmom[key] = {'value': round(pct, 2), 'abs': round(v4 - v3, 2)}
+    resource_price_band_total[pb]['环比'] = rmom
+
 # 4. Selling point analysis
 print("Computing selling point analysis...")
 sp_data = {}
@@ -646,7 +709,10 @@ output = {
     'resource_category_detail': resource_category_detail,
     'price_band_distribution': price_band_distribution,
     'price_band_type': price_band_type,
-    'resource_type_efficiency': resource_type_efficiency
+    'resource_type_efficiency': resource_type_efficiency,
+    'resource_health_status': resource_health_status,
+    'resource_price_band_matrix': resource_price_band_matrix,
+    'resource_price_band_total': resource_price_band_total
 }
 
 with open('/Users/zhengkeying/agent teams作业/data_analysis_output.json', 'w', encoding='utf-8') as f:

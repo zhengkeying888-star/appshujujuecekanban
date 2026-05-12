@@ -96,6 +96,18 @@ python3 generate_dashboard.py  # 生成 dashboard/index.html
 ` 也会变成真实换行符注入 JS，导致整个 `renderCharts()` 函数解析失败、所有图表空白
 - **正确做法**：用普通字符串拼接，或在 f-string 外预处理换行
 
+### 10. 资源位衰退预警
+- 规则：CVR 环比下滑 ≥ 10% 标黄「预警」，否则「正常」
+- 数据来源：直接使用 `resource_efficiency` 中已计算的环比数据，无需额外聚合
+- 呈现：在资源位效率矩阵表格最右列，用 badge 样式展示
+
+### 11. 资源位×价格带效率矩阵
+- 聚合维度：`广告资源位` × `price_band` × `stat_month`
+- 每价格带展示 3 个指标：线索数、首单数、CVR（`SUM(首单数) / SUM(线索数)`）
+- 底部汇总行：纵向合计全部 15 资源位在各价格带下的数据
+- 月份切换采用 **tbody 级显隐**（而非列级显隐）：生成三个独立 tbody（`#rp-march` / `#rp-april` / `#rp-compare`），通过 CSS 控制 `display: none`
+- 对比视图下 CVR 列附带环比变化（颜色 + 箭头）
+
 ## 15 个目标资源位（固定列表）
 
 ```python
@@ -128,6 +140,8 @@ TARGET_RESOURCES = [
 | 品类流量结构 CSV 解析错误 | 该 CSV 为左右并排双表格式 | 分别取左 8 列（4月）和右 8 列（3月）解析，参考 `generate_analysis.py` 第 210-256 行 |
 | 品类名称映射不一致 | Excel `category_name` 与 CSV `品类` 命名差异 | 使用精确匹配 + 包含匹配 fallback，未命中标记「未分类」 |
 | NameError 'apr' | `price_band_type` 计算在 CSV 解析之前 | 确保 `cat_type` 映射和 `price_band_type` 计算在 CSV 解析之后执行 |
+| 价格带矩阵月份切换无效 | 同一 tbody 内混合了多个月份的行数据 | 使用三个独立 tbody（`#rp-march/april/compare`），通过 CSS 控制 tbody 显隐，而非列级显隐 |
+| 健康状态列显示错位 | 表头新增了列但 tbody 行内未同步增加对应 td | 确保 `res_rows` 生成逻辑与表头 th 数量一致 |
 
 ## 数据验证基准
 

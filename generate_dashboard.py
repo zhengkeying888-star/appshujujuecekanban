@@ -51,6 +51,9 @@ def cat_type_badge(t):
     return colors.get(t, 'bg-gray-100 text-gray-800')
 
 # Build existing sections
+# Health status lookup
+health_map = {h['resource']: h for h in data.get('resource_health_status', [])}
+
 res_rows = ""
 for r in data['resource_efficiency']:
     res = r['resource']
@@ -59,6 +62,9 @@ for r in data['resource_efficiency']:
     mom = r['环比']
     c = mom_color(mom['线索数']['value'])
     a = mom_arrow(mom['线索数']['value'])
+    h = health_map.get(res, {'status': '正常', 'cvr_mom': 0})
+    h_status = h['status']
+    h_badge = 'bg-yellow-100 text-yellow-800' if h_status == '预警' else 'bg-green-100 text-green-800'
     res_rows += f"""
     <tr class="border-b border-surface-variant hover:bg-surface-container-low transition-colors">
       <td class="py-2 px-3 font-medium">{res}</td>
@@ -71,7 +77,55 @@ for r in data['resource_efficiency']:
       <td class="py-2 px-3 text-right {c} col-compare"><span class="material-symbols-outlined text-[14px] align-middle">{a}</span> {mom['线索数']['value']:.1f}%</td>
       <td class="py-2 px-3 text-right {mom_color(mom['转化率']['value'])} col-compare">{mom['转化率']['value']:.1f}%</td>
       <td class="py-2 px-3 text-right {mom_color(mom['首单流水']['value'])} col-compare">{mom['首单流水']['value']:.1f}%</td>
+      <td class="py-2 px-3 text-center"><span class="px-2 py-0.5 rounded text-xs font-semibold {h_badge}">{h_status}</span></td>
     </tr>"""
+
+# Resource × price band matrix
+pb_list = ['0元', '1.1元', '3.9元', '其他']
+
+def build_rp_rows(month_key, col_class, show_mom=False):
+    rows = ""
+    for res in data['resource_efficiency']:
+        res_name = res['resource']
+        rows += f"""<tr class="border-b border-surface-variant hover:bg-surface-container-low transition-colors">"""
+        rows += f"""<td class="py-2 px-3 font-medium {col_class}">{res_name}</td>"""
+        for pb in pb_list:
+            item = next((x for x in data.get('resource_price_band_matrix', []) if x['resource'] == res_name and x['price_band'] == pb), None)
+            if item:
+                m_data = item.get(month_key, {})
+                mom = item.get('环比', {})
+                rows += f"""<td class="py-2 px-3 text-right {col_class}">{fmt(m_data.get('线索数', 0))}</td>"""
+                rows += f"""<td class="py-2 px-3 text-right {col_class}">{fmt(m_data.get('首单数', 0))}</td>"""
+                cvr = m_data.get('转化率', 0)
+                if show_mom:
+                    cvr_mom = mom.get('转化率', {}).get('value', 0)
+                    rows += f"""<td class="py-2 px-3 text-right {mom_color(cvr_mom)} {col_class}">{fmt(cvr, 'pct1')} <span class="text-xs">({cvr_mom:+.1f}%)</span></td>"""
+                else:
+                    rows += f"""<td class="py-2 px-3 text-right {col_class}">{fmt(cvr, 'pct1')}</td>"""
+            else:
+                rows += f"""<td class="py-2 px-3 text-right {col_class}">—</td>""" * 3
+        rows += """</tr>"""
+    # Total row
+    rows += """<tr class="border-b border-surface-variant bg-surface-container-low font-semibold">"""
+    rows += f"""<td class="py-2 px-3 {col_class}">全部资源位汇总</td>"""
+    for pb in pb_list:
+        total = data.get('resource_price_band_total', {}).get(pb, {})
+        m_data = total.get(month_key, {})
+        mom = total.get('环比', {})
+        rows += f"""<td class="py-2 px-3 text-right {col_class}">{fmt(m_data.get('线索数', 0))}</td>"""
+        rows += f"""<td class="py-2 px-3 text-right {col_class}">{fmt(m_data.get('首单数', 0))}</td>"""
+        cvr = m_data.get('转化率', 0)
+        if show_mom:
+            cvr_mom = mom.get('转化率', {}).get('value', 0)
+            rows += f"""<td class="py-2 px-3 text-right {mom_color(cvr_mom)} {col_class}">{fmt(cvr, 'pct1')} <span class="text-xs">({cvr_mom:+.1f}%)</span></td>"""
+        else:
+            rows += f"""<td class="py-2 px-3 text-right {col_class}">{fmt(cvr, 'pct1')}</td>"""
+    rows += """</tr>"""
+    return rows
+
+rp_march_rows = build_rp_rows('2026-03', 'col-march')
+rp_april_rows = build_rp_rows('2026-04', 'col-april')
+rp_compare_rows = build_rp_rows('2026-04', 'col-compare', show_mom=True)
 
 sp_rows = ""
 for sp in data['selling_point_analysis'][:20]:
@@ -386,6 +440,9 @@ html = f'''<!DOCTYPE html>
   body.view-march .col-april, body.view-march .col-compare {{ display: none !important; }}
   body.view-april .col-march, body.view-april .col-compare {{ display: none !important; }}
   body.view-compare .col-march, body.view-compare .col-april, body.view-compare .col-compare {{ display: table-cell !important; }}
+  body.view-march tbody#rp-april, body.view-march tbody#rp-compare {{ display: none; }}
+  body.view-april tbody#rp-march, body.view-april tbody#rp-compare {{ display: none; }}
+  body.view-compare tbody#rp-march, body.view-compare tbody#rp-april {{ display: none; }}
 </style>
 </head>
 <body class="bg-background min-h-screen flex flex-col font-body-main text-on-surface view-compare" id="app-body">
@@ -590,11 +647,46 @@ html = f'''<!DOCTYPE html>
           <th class="py-2 px-3 font-normal text-right col-compare">线索环比</th>
           <th class="py-2 px-3 font-normal text-right col-compare">转化率环比</th>
           <th class="py-2 px-3 font-normal text-right col-compare">GMV环比</th>
+          <th class="py-2 px-3 font-normal text-center">健康状态</th>
         </tr>
       </thead>
       <tbody class="text-on-surface">
         {res_rows}
       </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Resource x Price Band Matrix -->
+<section class="w-full bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] fade-in">
+  <h2 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-4 border-b border-surface-variant pb-2 flex items-center gap-2">
+    <span class="material-symbols-outlined text-primary">account_tree</span> 资源位 × 价格带 效率矩阵
+  </h2>
+  <div class="mb-3 text-helper text-on-surface-variant">
+    各资源位在不同价格带（0元 / 1.1元 / 3.9元 / 其他）上的线索数、首单数与转化率。底部为全部资源位汇总。对比视图下 CVR 列附带环比变化。
+  </div>
+  <div class="table-scroll">
+    <table class="w-full text-left border-collapse font-body-main text-body-main">
+      <thead>
+        <tr class="font-label-caps text-label-caps text-on-surface-variant border-b border-surface-variant bg-surface-container-low">
+          <th class="py-2 px-3 font-normal">资源位</th>
+          <th class="py-2 px-3 font-normal text-right">0元线索</th>
+          <th class="py-2 px-3 font-normal text-right">0元首单</th>
+          <th class="py-2 px-3 font-normal text-right">0元CVR</th>
+          <th class="py-2 px-3 font-normal text-right">1.1元线索</th>
+          <th class="py-2 px-3 font-normal text-right">1.1元首单</th>
+          <th class="py-2 px-3 font-normal text-right">1.1元CVR</th>
+          <th class="py-2 px-3 font-normal text-right">3.9元线索</th>
+          <th class="py-2 px-3 font-normal text-right">3.9元首单</th>
+          <th class="py-2 px-3 font-normal text-right">3.9元CVR</th>
+          <th class="py-2 px-3 font-normal text-right">其他线索</th>
+          <th class="py-2 px-3 font-normal text-right">其他首单</th>
+          <th class="py-2 px-3 font-normal text-right">其他CVR</th>
+        </tr>
+      </thead>
+      <tbody id="rp-march">{rp_march_rows}</tbody>
+      <tbody id="rp-april">{rp_april_rows}</tbody>
+      <tbody id="rp-compare">{rp_compare_rows}</tbody>
     </table>
   </div>
 </section>

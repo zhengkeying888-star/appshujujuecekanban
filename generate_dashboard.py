@@ -342,10 +342,34 @@ mau = data.get('mau_summary', {})
 m3_mau = mau.get('2026-03', {}).get('total_mau', 0)
 m4_mau = mau.get('2026-04', {}).get('total_mau', 0)
 mau_mom = mau.get('环比', {}).get('total_mau', {}).get('value', 0)
+mau_mom_abs = mau.get('环比', {}).get('total_mau', {}).get('abs', 0)
 lgr_m3 = mau.get('2026-03', {}).get('lead_gen_rate', 0)
 lgr_m4 = mau.get('2026-04', {}).get('lead_gen_rate', 0)
 lgr_mom = mau.get('环比', {}).get('lead_gen_rate', {}).get('value', 0)
+lgr_mom_abs = mau.get('环比', {}).get('lead_gen_rate', {}).get('abs', 0)
 mau_diagnosis = f"月活人数从 {m3_mau:,} 下降至 {m4_mau:,}（环比{mau_mom:+.1f}%），但线索生成率从 {lgr_m3:.2f}% 提升至 {lgr_m4:.2f}%（环比{lgr_mom:+.1f}%），说明<strong>流量池收缩但线索获取效率改善</strong>。"
+
+# Dynamic core diagnosis values
+ms = data['monthly_summary']
+m3_ms = ms['2026-03']
+m4_ms = ms['2026-04']
+ms_mom = ms['环比']
+leads_mom_pct = ms_mom['线索数']['value']
+leads_mom_abs = int(ms_mom['线索数']['abs'])
+gmv_mom_pct = ms_mom['首单流水']['value']
+gmv_mom_abs = ms_mom['首单流水']['abs']
+cvr_m3 = m3_ms['转化率'] * 100
+cvr_m4 = m4_ms['转化率'] * 100
+cvr_mom_pct = ms_mom['转化率']['value']
+ltv_m3 = m3_ms['LTV均值']
+ltv_m4 = m4_ms['LTV均值']
+
+# Core diagnosis text (dynamic)
+core_diagnosis = f"4月整体线索数环比下降 <span class=\"font-bold text-error\">{abs(leads_mom_pct):.2f}%</span>（{leads_mom_abs:+,}），首单流水环比下降 <span class=\"font-bold text-error\">{abs(gmv_mom_pct):.1f}%</span>（-¥{abs(gmv_mom_abs)/10000:.1f}万），转化率从 {cvr_m3:.2f}% 跌至 {cvr_m4:.2f}%。"
+if abs(gmv_mom_pct) > abs(leads_mom_pct):
+    core_diagnosis += "GMV 下滑幅度大于线索下滑幅度，说明<strong>转化效率恶化是核心问题</strong>，而非单纯流量减少。"
+else:
+    core_diagnosis += "线索下滑幅度大于 GMV 下滑幅度，说明<strong>流量减少是主要压力</strong>。"
 
 js_data = json.dumps(data, ensure_ascii=False)
 
@@ -480,7 +504,7 @@ html = f'''<!DOCTYPE html>
   <div>
     <div class="font-metric-sm text-metric-sm font-semibold text-error">核心问题诊断</div>
     <div class="font-body-main text-body-main text-on-surface-variant mt-1">
-      4月整体线索数环比下降 <span class="font-bold text-error">3.18%</span>（-574），首单流水环比下降 <span class="font-bold text-error">29.1%</span>（-¥66.2万），转化率从 7.30% 跌至 5.41%。GMV 下滑幅度远大于线索下滑幅度，说明<strong>转化效率恶化是核心问题</strong>，而非单纯流量减少。{pb_diagnosis} {mau_diagnosis}
+      {core_diagnosis} {pb_diagnosis} {mau_diagnosis}
     </div>
   </div>
 </section>
@@ -490,54 +514,54 @@ html = f'''<!DOCTYPE html>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">月度线索数</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-leads">17,492</span>
-      <span class="flex items-center text-error font-helper text-helper" id="kpi-leads-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 3.18%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-leads">{fmt(m4_ms['线索数'])}</span>
+      <span class="flex items-center text-error font-helper text-helper" id="kpi-leads-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> {abs(leads_mom_pct):.2f}%</span>
     </div>
-    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-leads-abs">-574 较上月</div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-leads-abs">{leads_mom_abs:+,} 较上月</div>
   </div>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">GMV（首单流水）</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-gmv">¥161.1万</span>
-      <span class="flex items-center text-error font-helper text-helper" id="kpi-gmv-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 29.1%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-gmv">¥{m4_ms['首单流水']/10000:.1f}万</span>
+      <span class="flex items-center text-error font-helper text-helper" id="kpi-gmv-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> {abs(gmv_mom_pct):.1f}%</span>
     </div>
-    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-gmv-abs">-¥66.2万 较上月</div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-gmv-abs">-¥{abs(gmv_mom_abs)/10000:.1f}万 较上月</div>
   </div>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">
       <span class="metric-def" title="转化率 = SUM(首单数) / SUM(线索数)。严禁直接对原始字段取 AVG，行级转化率在聚合时会导致均值偏差。">整体转化率</span>
     </div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-cvr">5.41%</span>
-      <span class="flex items-center text-error font-helper text-helper" id="kpi-cvr-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 25.9%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-cvr">{cvr_m4:.2f}%</span>
+      <span class="flex items-center text-error font-helper text-helper" id="kpi-cvr-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> {abs(cvr_mom_pct):.1f}%</span>
     </div>
-    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-cvr-abs">-1.89pp 较上月</div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-cvr-abs">{ms_mom['转化率']['abs']*100:+.2f}pp 较上月</div>
   </div>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">月活人数 (MAU)</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-mau">70.3万</span>
-      <span class="flex items-center text-error font-helper text-helper" id="kpi-mau-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 7.36%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-mau">{m4_mau/10000:.1f}万</span>
+      <span class="flex items-center text-error font-helper text-helper" id="kpi-mau-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> {abs(mau_mom):.2f}%</span>
     </div>
-    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-mau-abs">-55,828 较上月</div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-mau-abs">{mau_mom_abs:+,} 较上月</div>
   </div>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">
       <span class="metric-def" title="线索生成率 = 线索数 / 月活人数。反映流量池的线索获取效率。">线索生成率</span>
     </div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-lgr">2.49%</span>
-      <span class="flex items-center text-secondary font-helper text-helper" id="kpi-lgr-mom"><span class="material-symbols-outlined text-[16px]">arrow_upward</span> 4.51%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-lgr">{lgr_m4:.2f}%</span>
+      <span class="flex items-center text-secondary font-helper text-helper" id="kpi-lgr-mom"><span class="material-symbols-outlined text-[16px]">arrow_upward</span> {abs(lgr_mom):.2f}%</span>
     </div>
-    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-lgr-abs">+0.11pp 较上月</div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-lgr-abs">{lgr_mom_abs:+.2f}pp 较上月</div>
   </div>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">LTV 均值</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-ltv">¥92.12</span>
-      <span class="flex items-center text-error font-helper text-helper" id="kpi-ltv-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 26.8%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-ltv">¥{ltv_m4:.2f}</span>
+      <span class="flex items-center text-error font-helper text-helper" id="kpi-ltv-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> {abs(ms_mom['LTV均值']['value']):.1f}%</span>
     </div>
-    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-ltv-abs">-¥33.69 较上月</div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-ltv-abs">{ms_mom['LTV均值']['abs']:+.2f} 较上月</div>
   </div>
 </section>
 

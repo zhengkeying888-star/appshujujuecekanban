@@ -632,10 +632,13 @@ for ba in best_audience[:5]:
         'basis': '该人群转化率' + str(cvr_pct) + '%，为同品类价格带最优'
     })
 
+gmv_mom_pct = abs(mom.get('首单流水', {}).get('value', 0))
+orders_mom_pct = abs(mom.get('首单数', {}).get('value', 0))
+ltv_mom_pct = abs(mom.get('LTV均值', {}).get('value', 0))
 actions.append({
     'priority': 'P1',
-    'action': '全月GMV下降29.1%，需优化高价值资源位转化漏斗',
-    'basis': '首单数环比下降28.2%，首单流水环比下降29.1%，LTV均值下降26.8%'
+    'action': '全月GMV下降' + str(round(gmv_mom_pct, 1)) + '%，需优化高价值资源位转化漏斗',
+    'basis': '首单数环比下降' + str(round(orders_mom_pct, 1)) + '%，首单流水环比下降' + str(round(gmv_mom_pct, 1)) + '%，LTV均值下降' + str(round(ltv_mom_pct, 1)) + '%'
 })
 
 for sp in selling_point_analysis:

@@ -337,6 +337,16 @@ if abs(zero_mom_pp) >= 1:
 else:
     pb_diagnosis = "0元课线索占比保持稳定。"
 
+# MAU diagnosis insight
+mau = data.get('mau_summary', {})
+m3_mau = mau.get('2026-03', {}).get('total_mau', 0)
+m4_mau = mau.get('2026-04', {}).get('total_mau', 0)
+mau_mom = mau.get('环比', {}).get('total_mau', {}).get('value', 0)
+lgr_m3 = mau.get('2026-03', {}).get('lead_gen_rate', 0)
+lgr_m4 = mau.get('2026-04', {}).get('lead_gen_rate', 0)
+lgr_mom = mau.get('环比', {}).get('lead_gen_rate', {}).get('value', 0)
+mau_diagnosis = f"月活人数从 {m3_mau:,} 下降至 {m4_mau:,}（环比{mau_mom:+.1f}%），但线索生成率从 {lgr_m3:.2f}% 提升至 {lgr_m4:.2f}%（环比{lgr_mom:+.1f}%），说明<strong>流量池收缩但线索获取效率改善</strong>。"
+
 js_data = json.dumps(data, ensure_ascii=False)
 
 html = f'''<!DOCTYPE html>
@@ -470,17 +480,17 @@ html = f'''<!DOCTYPE html>
   <div>
     <div class="font-metric-sm text-metric-sm font-semibold text-error">核心问题诊断</div>
     <div class="font-body-main text-body-main text-on-surface-variant mt-1">
-      4月整体线索数环比下降 <span class="font-bold text-error">3.18%</span>（-574），首单流水环比下降 <span class="font-bold text-error">29.1%</span>（-¥66.2万），转化率从 7.30% 跌至 5.41%。GMV 下滑幅度远大于线索下滑幅度，说明<strong>转化效率恶化是核心问题</strong>，而非单纯流量减少。{pb_diagnosis}
+      4月整体线索数环比下降 <span class="font-bold text-error">3.18%</span>（-574），首单流水环比下降 <span class="font-bold text-error">29.1%</span>（-¥66.2万），转化率从 7.30% 跌至 5.41%。GMV 下滑幅度远大于线索下滑幅度，说明<strong>转化效率恶化是核心问题</strong>，而非单纯流量减少。{pb_diagnosis} {mau_diagnosis}
     </div>
   </div>
 </section>
 
 <!-- KPI Overview -->
-<section class="grid grid-cols-5 gap-gutter w-full fade-in" id="kpi-section">
+<section class="grid grid-cols-6 gap-gutter w-full fade-in" id="kpi-section">
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">月度线索数</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[32px] font-bold text-on-surface leading-none" id="kpi-leads">17,492</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-leads">17,492</span>
       <span class="flex items-center text-error font-helper text-helper" id="kpi-leads-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 3.18%</span>
     </div>
     <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-leads-abs">-574 较上月</div>
@@ -488,7 +498,7 @@ html = f'''<!DOCTYPE html>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">GMV（首单流水）</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[32px] font-bold text-on-surface leading-none" id="kpi-gmv">¥161.1万</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-gmv">¥161.1万</span>
       <span class="flex items-center text-error font-helper text-helper" id="kpi-gmv-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 29.1%</span>
     </div>
     <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-gmv-abs">-¥66.2万 较上月</div>
@@ -498,23 +508,33 @@ html = f'''<!DOCTYPE html>
       <span class="metric-def" title="转化率 = SUM(首单数) / SUM(线索数)。严禁直接对原始字段取 AVG，行级转化率在聚合时会导致均值偏差。">整体转化率</span>
     </div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[32px] font-bold text-on-surface leading-none" id="kpi-cvr">5.41%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-cvr">5.41%</span>
       <span class="flex items-center text-error font-helper text-helper" id="kpi-cvr-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 25.9%</span>
     </div>
     <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-cvr-abs">-1.89pp 较上月</div>
   </div>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
-    <div class="font-body-main text-body-main text-on-surface-variant">资源位数量</div>
+    <div class="font-body-main text-body-main text-on-surface-variant">月活人数 (MAU)</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[32px] font-bold text-on-surface leading-none" id="kpi-slots">26</span>
-      <span class="flex items-center text-on-surface-variant font-helper text-helper"><span class="material-symbols-outlined text-[16px]">horizontal_rule</span> 0%</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-mau">70.3万</span>
+      <span class="flex items-center text-error font-helper text-helper" id="kpi-mau-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 7.36%</span>
     </div>
-    <div class="font-helper text-helper text-on-surface-variant mt-1">0 较上月</div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-mau-abs">-55,828 较上月</div>
+  </div>
+  <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
+    <div class="font-body-main text-body-main text-on-surface-variant">
+      <span class="metric-def" title="线索生成率 = 线索数 / 月活人数。反映流量池的线索获取效率。">线索生成率</span>
+    </div>
+    <div class="flex items-end gap-2">
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-lgr">2.49%</span>
+      <span class="flex items-center text-secondary font-helper text-helper" id="kpi-lgr-mom"><span class="material-symbols-outlined text-[16px]">arrow_upward</span> 4.51%</span>
+    </div>
+    <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-lgr-abs">+0.11pp 较上月</div>
   </div>
   <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose flex flex-col gap-element-tight shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
     <div class="font-body-main text-body-main text-on-surface-variant">LTV 均值</div>
     <div class="flex items-end gap-2">
-      <span class="font-metric-lg text-[32px] font-bold text-on-surface leading-none" id="kpi-ltv">¥92.12</span>
+      <span class="font-metric-lg text-[28px] font-bold text-on-surface leading-none" id="kpi-ltv">¥92.12</span>
       <span class="flex items-center text-error font-helper text-helper" id="kpi-ltv-mom"><span class="material-symbols-outlined text-[16px]">arrow_downward</span> 26.8%</span>
     </div>
     <div class="font-helper text-helper text-on-surface-variant mt-1" id="kpi-ltv-abs">-¥33.69 较上月</div>
@@ -540,6 +560,16 @@ html = f'''<!DOCTYPE html>
   <div class="w-1/3 bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
     <h2 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2 border-b border-surface-variant pb-2">资源位线索占比</h2>
     <div id="pie-chart" class="chart-container flex-grow"></div>
+  </div>
+</section>
+
+<!-- MAU by User Level -->
+<section class="w-full flex flex-col gap-4 fade-in">
+  <h2 class="font-metric-sm text-metric-sm font-semibold text-on-surface border-b border-surface-variant pb-2 flex items-center gap-2">
+    <span class="material-symbols-outlined text-primary">groups</span> 月活人数趋势（按用户等级）
+  </h2>
+  <div class="w-full bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col h-[360px]">
+    <div id="mau-level-chart" class="chart-container flex-grow"></div>
   </div>
 </section>
 
@@ -587,7 +617,7 @@ html = f'''<!DOCTYPE html>
   <h2 class="font-metric-sm text-metric-sm font-semibold text-on-surface border-b border-surface-variant pb-2 flex items-center gap-2">
     <span class="material-symbols-outlined text-primary">pie_chart</span> 价格带全局占比
   </h2>
-  <div class="flex gap-gutter w-full h-[320px]">
+  <div class="flex gap-gutter w-full h-[420px]">
     <div class="w-1/2 bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
       <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2">3月价格带分布</h3>
       <div id="price-band-march-chart" class="chart-container flex-grow"></div>
@@ -959,30 +989,42 @@ function updateKPI(month) {{
   const m3 = ms['2026-03'];
   const m4 = ms['2026-04'];
   const mom = ms['环比'];
+  const mau = RAW_DATA.mau_summary;
+  const m3mau = mau['2026-03'];
+  const m4mau = mau['2026-04'];
+  const mauMom = mau['环比'];
 
-  let leads, gmv, cvr, slots, ltv, leadsMom, gmvMom, cvrMom, ltvMom, leadsAbs, gmvAbs, cvrAbs, ltvAbs;
+  let leads, gmv, cvr, ltv, mauVal, lgr, leadsMom, gmvMom, cvrMom, ltvMom, mauMomVal, lgrMom, leadsAbs, gmvAbs, cvrAbs, ltvAbs, mauAbs, lgrAbs;
 
   if (month === 'march') {{
-    leads = m3['线索数']; gmv = m3['首单流水']; cvr = m3['转化率']; slots = m3['资源位数量']; ltv = m3['LTV均值'];
-    leadsMom = null; gmvMom = null; cvrMom = null; ltvMom = null;
-    leadsAbs = null; gmvAbs = null; cvrAbs = null; ltvAbs = null;
+    leads = m3['线索数']; gmv = m3['首单流水']; cvr = m3['转化率']; ltv = m3['LTV均值'];
+    mauVal = m3mau['total_mau']; lgr = m3mau['lead_gen_rate'];
+    leadsMom = null; gmvMom = null; cvrMom = null; ltvMom = null; mauMomVal = null; lgrMom = null;
+    leadsAbs = null; gmvAbs = null; cvrAbs = null; ltvAbs = null; mauAbs = null; lgrAbs = null;
   }} else if (month === 'april') {{
-    leads = m4['线索数']; gmv = m4['首单流水']; cvr = m4['转化率']; slots = m4['资源位数量']; ltv = m4['LTV均值'];
+    leads = m4['线索数']; gmv = m4['首单流水']; cvr = m4['转化率']; ltv = m4['LTV均值'];
+    mauVal = m4mau['total_mau']; lgr = m4mau['lead_gen_rate'];
     leadsMom = mom['线索数']['value']; gmvMom = mom['首单流水']['value']; cvrMom = mom['转化率']['value']; ltvMom = mom['LTV均值']['value'];
+    mauMomVal = mauMom['total_mau']['value']; lgrMom = mauMom['lead_gen_rate']['value'];
     leadsAbs = mom['线索数']['abs']; gmvAbs = mom['首单流水']['abs']; cvrAbs = mom['转化率']['abs']; ltvAbs = mom['LTV均值']['abs'];
+    mauAbs = mauMom['total_mau']['abs']; lgrAbs = mauMom['lead_gen_rate']['abs'];
   }} else {{
-    leads = m4['线索数']; gmv = m4['首单流水']; cvr = m4['转化率']; slots = m4['资源位数量']; ltv = m4['LTV均值'];
+    leads = m4['线索数']; gmv = m4['首单流水']; cvr = m4['转化率']; ltv = m4['LTV均值'];
+    mauVal = m4mau['total_mau']; lgr = m4mau['lead_gen_rate'];
     leadsMom = mom['线索数']['value']; gmvMom = mom['首单流水']['value']; cvrMom = mom['转化率']['value']; ltvMom = mom['LTV均值']['value'];
+    mauMomVal = mauMom['total_mau']['value']; lgrMom = mauMom['lead_gen_rate']['value'];
     leadsAbs = mom['线索数']['abs']; gmvAbs = mom['首单流水']['abs']; cvrAbs = mom['转化率']['abs']; ltvAbs = mom['LTV均值']['abs'];
+    mauAbs = mauMom['total_mau']['abs']; lgrAbs = mauMom['lead_gen_rate']['abs'];
   }}
 
   document.getElementById('kpi-leads').textContent = fmtNum(leads);
   document.getElementById('kpi-gmv').textContent = '¥' + (gmv/10000).toFixed(1) + '万';
   document.getElementById('kpi-cvr').textContent = (cvr*100).toFixed(2) + '%';
-  document.getElementById('kpi-slots').textContent = slots;
   document.getElementById('kpi-ltv').textContent = '¥' + ltv.toFixed(2);
+  document.getElementById('kpi-mau').textContent = (mauVal/10000).toFixed(1) + '万';
+  document.getElementById('kpi-lgr').textContent = lgr.toFixed(2) + '%';
 
-  function setMom(id, value, abs, isPct) {{
+  function setMom(id, value, abs, isPct, isPp) {{
     const el = document.getElementById(id);
     const absEl = document.getElementById(id.replace('-mom', '-abs'));
     if (value === null) {{
@@ -993,15 +1035,17 @@ function updateKPI(month) {{
     const arrow = momArrow(value);
     const color = momColorClass(value);
     const suffix = isPct ? '%' : '';
-    const absSuffix = isPct ? 'pp' : '';
+    const absSuffix = isPp ? 'pp' : (isPct ? 'pp' : '');
     el.innerHTML = '<span class="flex items-center ' + color + ' font-helper text-helper"><span class="material-symbols-outlined text-[16px]">' + arrow + '</span> ' + Math.abs(value).toFixed(1) + suffix + '</span>';
     absEl.textContent = (value > 0 ? '+' : '') + (isPct ? (abs*100).toFixed(2) : abs) + absSuffix + ' 较上月';
   }}
 
-  setMom('kpi-leads-mom', leadsMom, leadsAbs, false);
-  setMom('kpi-gmv-mom', gmvMom, gmvAbs, false);
-  setMom('kpi-cvr-mom', cvrMom, cvrAbs, true);
-  setMom('kpi-ltv-mom', ltvMom, ltvAbs, false);
+  setMom('kpi-leads-mom', leadsMom, leadsAbs, false, false);
+  setMom('kpi-gmv-mom', gmvMom, gmvAbs, false, false);
+  setMom('kpi-cvr-mom', cvrMom, cvrAbs, true, true);
+  setMom('kpi-ltv-mom', ltvMom, ltvAbs, false, false);
+  setMom('kpi-mau-mom', mauMomVal, mauAbs, false, false);
+  setMom('kpi-lgr-mom', lgrMom, lgrAbs, true, true);
 }}
 
 function setMonth(m) {{
@@ -1162,38 +1206,41 @@ function renderCharts() {{
     }});
   }}
 
-  // Price band sunburst charts
+  // Price band donut charts (reference: resource share pie style)
   const pbMarchEl = document.getElementById('price-band-march-chart');
   const pbAprilEl = document.getElementById('price-band-april-chart');
+  function buildPriceBandOption(monthData) {{
+    const data = [];
+    monthData.forEach(d => {{
+      d.children.forEach(c => {{
+        data.push({{
+          value: c.value,
+          name: d.name + '·' + c.name,
+          rawName: c.name,
+          rawBand: d.name
+        }});
+      }});
+    }});
+    return {{
+      tooltip: {{ trigger: 'item', formatter: function(p) {{ return p.data.rawBand + ' ' + p.data.rawName + ': ' + p.value.toLocaleString() + ' (' + p.percent.toFixed(1) + '%)'; }} }},
+      series: [{{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        avoidLabelOverlap: true,
+        itemStyle: {{ borderRadius: 6, borderColor: '#fff', borderWidth: 2 }},
+        label: {{ show: true, formatter: function(p) {{ if(p.percent < 2) return ''; return p.data.rawBand + '·' + p.data.rawName + ' ' + p.percent.toFixed(1) + '%'; }}, fontSize: 12 }},
+        labelLine: {{ show: true, length: 15, length2: 10 }},
+        data: data
+      }}]
+    }};
+  }}
   if(pbMarchEl) {{
     const chart = echarts.init(pbMarchEl);
     const pbData = RAW_DATA.price_band_type ? RAW_DATA.price_band_type['2026-03'] : [];
     if(currentMonth === 'april') {{
       chart.clear();
     }} else {{
-      chart.setOption({{
-        tooltip: {{ trigger: 'item', formatter: function(p) {{ return p.name + ': ' + p.value.toLocaleString(); }} }},
-        series: [{{
-          type: 'sunburst',
-          radius: ['20%', '70%'],
-          itemStyle: {{ borderRadius: 4, borderColor: '#fff', borderWidth: 2 }},
-          label: {{ formatter: '{{b}}' }},
-          levels: [
-            {{}},
-            {{ r0: '20%', r: '55%', label: {{ rotate: 'tangential', fontSize: 11 }} }},
-            {{ r0: '55%', r: '70%', label: {{ align: 'right', fontSize: 10 }} }}
-          ],
-          data: pbData.map(d => ({{
-            name: d.name,
-            value: d.value,
-            children: d.children.map(c => ({{
-              name: c.name,
-              value: c.value,
-              itemStyle: {{ color: c.name === '正式品' ? '#004ac6' : '#4edea3' }}
-            }}))
-          }}))
-        }}]
-      }});
+      chart.setOption(buildPriceBandOption(pbData));
     }}
   }}
   if(pbAprilEl) {{
@@ -1202,29 +1249,7 @@ function renderCharts() {{
     if(currentMonth === 'march') {{
       chart.clear();
     }} else {{
-      chart.setOption({{
-        tooltip: {{ trigger: 'item', formatter: function(p) {{ return p.name + ': ' + p.value.toLocaleString(); }} }},
-        series: [{{
-          type: 'sunburst',
-          radius: ['20%', '70%'],
-          itemStyle: {{ borderRadius: 4, borderColor: '#fff', borderWidth: 2 }},
-          label: {{ formatter: '{{b}}' }},
-          levels: [
-            {{}},
-            {{ r0: '20%', r: '55%', label: {{ rotate: 'tangential', fontSize: 11 }} }},
-            {{ r0: '55%', r: '70%', label: {{ align: 'right', fontSize: 10 }} }}
-          ],
-          data: pbData.map(d => ({{
-            name: d.name,
-            value: d.value,
-            children: d.children.map(c => ({{
-              name: c.name,
-              value: c.value,
-              itemStyle: {{ color: c.name === '正式品' ? '#004ac6' : '#4edea3' }}
-            }}))
-          }}))
-        }}]
-      }});
+      chart.setOption(buildPriceBandOption(pbData));
     }}
   }}
 
@@ -1291,8 +1316,38 @@ function renderCharts() {{
     }});
   }}
 
+  // MAU by level chart
+  const mauEl = document.getElementById('mau-level-chart');
+  if(mauEl) {{
+    const chart = echarts.init(mauEl);
+    const mauByLevel = RAW_DATA.mau_by_level;
+    const levels = Object.keys(mauByLevel['2026-03']).sort((a,b) => parseInt(a) - parseInt(b));
+    const marchData = levels.map(l => mauByLevel['2026-03'][l] || 0);
+    const aprilData = levels.map(l => mauByLevel['2026-04'][l] || 0);
+    let series = [];
+    let xAxis = levels.map(l => '等级' + l);
+    if(currentMonth === 'march') {{
+      series = [{{ name: '3月月活', type: 'bar', stack: 'total', data: marchData, itemStyle: {{ color: '#b4c5ff' }} }}];
+    }} else if(currentMonth === 'april') {{
+      series = [{{ name: '4月月活', type: 'bar', stack: 'total', data: aprilData, itemStyle: {{ color: '#004ac6' }} }}];
+    }} else {{
+      series = [
+        {{ name: '3月月活', type: 'bar', data: marchData, itemStyle: {{ color: '#b4c5ff' }} }},
+        {{ name: '4月月活', type: 'bar', data: aprilData, itemStyle: {{ color: '#004ac6' }} }}
+      ];
+    }}
+    chart.setOption({{
+      tooltip: {{ trigger: 'axis', axisPointer: {{ type: 'shadow' }} }},
+      legend: {{ bottom: 0 }},
+      grid: {{ left: 60, right: 30, top: 20, bottom: 40 }},
+      xAxis: {{ type: 'category', data: xAxis }},
+      yAxis: {{ type: 'value', name: '月活人数' }},
+      series: series
+    }});
+  }}
+
   window.addEventListener('resize', () => {{
-    ['trend-chart','pie-chart','category-bar-chart','category-pie-chart','heatmap-chart','wordcloud-chart'].forEach(id => {{
+    ['trend-chart','pie-chart','category-bar-chart','category-pie-chart','heatmap-chart','wordcloud-chart','mau-level-chart'].forEach(id => {{
       const el = document.getElementById(id);
       if(el) {{
         const inst = echarts.getInstanceByDom(el);

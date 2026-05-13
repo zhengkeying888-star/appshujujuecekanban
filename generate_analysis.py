@@ -5,7 +5,7 @@ from collections import defaultdict
 
 # 1. Read and clean main data
 print("Reading Excel...")
-df = pd.read_excel('/Users/zhengkeying/agent teams作业/APP线索广告位拆解3-4月.xlsx', sheet_name='APP线索广告位拆解')
+df = pd.read_excel('/Users/zhengkeying/agent teams作业/APP线索广告位拆解 3-4月更新版.xlsx', sheet_name='APP线索广告位拆解')
 print(f"Total rows: {len(df)}")
 
 df = df[df['stat_month'] != '合计'].copy()
@@ -30,13 +30,17 @@ def price_band(price):
 
 df['price_band'] = df['sku_price'].apply(price_band)
 
+# Fallback for missing columns in new data file
+if '面向人群' not in df.columns:
+    df['面向人群'] = '全部用户'
+
 def extract_selling_point(text):
     if pd.isna(text):
         return None
     m = re.search(r'【(.+?)】', str(text))
-    return m.group(1) if m else None
+    return m.group(1) if m else str(text).strip()
 
-df['selling_point'] = df['广告位素材'].apply(extract_selling_point)
+df['selling_point'] = df['camp_name'].apply(extract_selling_point)
 
 # 2. Monthly summary
 print("Computing monthly summary...")
@@ -47,7 +51,7 @@ for month, group in df.groupby('stat_month'):
     gmv = float(group['首单流水'].sum())
     cvr = orders / leads if leads > 0 else 0
     ltv_avg = float(group['LTV'].mean()) if 'LTV' in group.columns else 0
-    slots = group['广告资源位'].nunique()
+    slots = group['tag_level_1'].nunique()
     summary[month] = {
         '线索数': leads, '首单数': orders, '首单流水': round(gmv, 2),
         '转化率': round(cvr, 4), 'LTV均值': round(ltv_avg, 2), '资源位数量': slots
@@ -64,12 +68,44 @@ for key in ['线索数', '首单数', '首单流水', '转化率', 'LTV均值']:
 
 monthly_summary = {'2026-03': m3, '2026-04': m4, '环比': mom}
 
+# 2b. MAU data
+print("Reading MAU data...")
+mau_df = pd.read_excel('/Users/zhengkeying/agent teams作业/3-4月月活人数.xlsx', sheet_name='用户等级月活人数')
+mau_df = mau_df[mau_df['月份'].isin(['2026-03', '2026-04'])].copy()
+
+mau_summary = {}
+mau_by_level = {'2026-03': {}, '2026-04': {}}
+for month, group in mau_df.groupby('月份'):
+    total_mau = int(group['月活人数'].sum())
+    leads = monthly_summary[month]['线索数']
+    lead_gen_rate = round(leads / total_mau * 100, 4) if total_mau > 0 else 0
+    mau_summary[month] = {
+        'total_mau': total_mau,
+        'lead_gen_rate': lead_gen_rate
+    }
+    for _, row in group.iterrows():
+        level = str(row['用户等级']).strip()
+        mau_by_level[month][level] = int(row['月活人数'])
+
+m3_mau = mau_summary.get('2026-03', {}).get('total_mau', 0)
+m4_mau = mau_summary.get('2026-04', {}).get('total_mau', 0)
+mau_summary['环比'] = {
+    'total_mau': {
+        'value': round((m4_mau - m3_mau) / m3_mau * 100, 2) if m3_mau > 0 else 0,
+        'abs': m4_mau - m3_mau
+    },
+    'lead_gen_rate': {
+        'value': round((mau_summary['2026-04']['lead_gen_rate'] - mau_summary['2026-03']['lead_gen_rate']) / mau_summary['2026-03']['lead_gen_rate'] * 100, 2) if mau_summary['2026-03']['lead_gen_rate'] > 0 else 0,
+        'abs': round(mau_summary['2026-04']['lead_gen_rate'] - mau_summary['2026-03']['lead_gen_rate'], 4)
+    }
+}
+
 # 3. Resource efficiency
 print("Computing resource efficiency...")
 resource_efficiency = []
 for res in TARGET_RESOURCES:
-    r3 = df[(df['stat_month'] == '2026-03') & (df['广告资源位'] == res)]
-    r4 = df[(df['stat_month'] == '2026-04') & (df['广告资源位'] == res)]
+    r3 = df[(df['stat_month'] == '2026-03') & (df['tag_level_1'] == res)]
+    r4 = df[(df['stat_month'] == '2026-04') & (df['tag_level_1'] == res)]
 
     def agg(g):
         leads = int(g['线索数'].sum())
@@ -111,7 +147,7 @@ for res in TARGET_RESOURCES:
     for pb in ['0元', '1.1元', '3.9元', '其他']:
         row = {'resource': res, 'price_band': pb}
         for month in ['2026-03', '2026-04']:
-            g = df[(df['广告资源位'] == res) & (df['price_band'] == pb) & (df['stat_month'] == month)]
+            g = df[(df['tag_level_1'] == res) & (df['price_band'] == pb) & (df['stat_month'] == month)]
             leads = int(g['线索数'].sum())
             orders = int(g['首单数'].sum())
             gmv = float(g['首单流水'].sum())
@@ -418,7 +454,7 @@ for month, group in df.groupby('stat_month'):
 # 9. Resource × Category analysis
 print("Computing resource × category analysis...")
 resource_category = []
-for (res, cat), g in df.groupby(['广告资源位', 'category_name']):
+for (res, cat), g in df.groupby(['tag_level_1', 'category_name']):
     if res not in TARGET_RESOURCES:
         continue
     m3g = g[g['stat_month'] == '2026-03']
@@ -523,7 +559,7 @@ print("Computing resource × category type efficiency...")
 
 resource_type_efficiency = []
 for res in TARGET_RESOURCES:
-    rdf = df[df['广告资源位'] == res]
+    rdf = df[df['tag_level_1'] == res]
     res_total = int(rdf['线索数'].sum())
     if res_total == 0:
         continue
@@ -712,7 +748,9 @@ output = {
     'resource_type_efficiency': resource_type_efficiency,
     'resource_health_status': resource_health_status,
     'resource_price_band_matrix': resource_price_band_matrix,
-    'resource_price_band_total': resource_price_band_total
+    'resource_price_band_total': resource_price_band_total,
+    'mau_summary': mau_summary,
+    'mau_by_level': mau_by_level
 }
 
 with open('/Users/zhengkeying/agent teams作业/data_analysis_output.json', 'w', encoding='utf-8') as f:
@@ -729,3 +767,5 @@ print("Heatmap cells:", len(heatmap_data))
 print("Actions:", len(actions))
 print("Price bands:", len(price_band_distribution))
 print("Resource type efficiency:", len(resource_type_efficiency))
+print("MAU summary:", mau_summary)
+print("MAU by level:", len(mau_by_level))

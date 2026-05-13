@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-基于 `APP线索广告位拆解3-4月.xlsx`（约 3.6 万行投放明细）构建的单文件 HTML BI 看板，支持 3月/4月/3-4月对比三种视图切换与一键导出 HTML 月报。
+基于 `APP线索广告位拆解 3-4月更新版.xlsx`（约 3.6 万行投放明细）及 `3-4月月活人数.xlsx`（用户等级月活）构建的单文件 HTML BI 看板，支持 3月/4月/3-4月对比三种视图切换与一键导出 HTML 月报。
 
 ## 技术栈
 
@@ -15,14 +15,15 @@
 
 ```
 .
-├── APP线索广告位拆解3-4月.xlsx   # 主数据源（35 列，含 stat_month, 广告资源位, 广告位素材, 线索数, 首单数, 首单流水, LTV, category_name, sku_price, 面向人群）
-├── APP品类流量结构.csv            # 品类流量结构数据源（区分正式品/孵化品）
-├── generate_analysis.py          # 数据清洗与聚合分析脚本
-├── data_analysis_output.json     # 分析结果 JSON（被 dashboard 内嵌读取）
-├── generate_dashboard.py         # HTML 看板生成器（Python f-string 模板）
-├── dashboard/index.html          # 最终交付物（单文件可运行）
-├── product_requirements.md       # PRD
-└── CLAUDE.md                     # 本文件
+├── APP线索广告位拆解 3-4月更新版.xlsx   # 主数据源（37 列，含 stat_month, tag_level_1, camp_name, 线索数, 首单数, 首单流水, LTV, category_name, sku_price）
+├── 3-4月月活人数.xlsx                    # 月活数据源（月份, 用户等级, 月活人数, 占比）
+├── APP品类流量结构.csv                    # 品类流量结构数据源（区分正式品/孵化品）
+├── generate_analysis.py                  # 数据清洗与聚合分析脚本
+├── data_analysis_output.json             # 分析结果 JSON（被 dashboard 内嵌读取）
+├── generate_dashboard.py                 # HTML 看板生成器（Python f-string 模板）
+├── dashboard/index.html                  # 最终交付物（单文件可运行）
+├── product_requirements.md               # PRD
+└── CLAUDE.md                             # 本文件
 ```
 
 ## 构建流程
@@ -60,14 +61,14 @@ python3 generate_dashboard.py  # 生成 dashboard/index.html
 - 漏过滤会导致数据翻倍（3月线索数会从 18,066 变成 36,132）
 
 ### 3. 卖点提取
-- 从 `广告位素材` 字段中提取 `【】` 内的内容
-- 正则：`re.search(r'【(.+?)】', text)`
-- **不要**提取品类名或其他无关文本
+- 新数据文件无 `广告位素材` 列，改用 `camp_name`（活动/课程名称）
+- 优先从 `camp_name` 中提取 `【】` 内的内容；若未匹配，回退到完整 `camp_name`
+- 正则：`re.search(r'【(.+?)】', text)`，fallback 为 `str(text).strip()`
 
 ### 4. 月份切换实现
 - CSS 列级显隐：`body.view-march .col-april { display: none }`
-- JS `updateKPI(month)` 动态更新 5 张 KPI 卡片数值
-- JS `renderCharts()` 根据 `currentMonth` 切换趋势图/饼图/品类图/旭日图数据源
+- JS `updateKPI(month)` 动态更新 6 张 KPI 卡片数值（线索数、GMV、转化率、MAU、线索生成率、LTV）
+- JS `renderCharts()` 根据 `currentMonth` 切换趋势图/饼图/品类图/旭日图/月活等级图数据源
 - 表格表头和单元格必须有 `col-march` / `col-april` / `col-compare` 类
 
 ### 5. 综合得分（资源位×品类）
@@ -75,33 +76,39 @@ python3 generate_dashboard.py  # 生成 dashboard/index.html
 - `score = CVR_norm * 0.4 + GMV_norm * 0.35 + Leads_norm * 0.25`
 - Min-Max 归一化到 0-100，基于所有达标组合
 
-### 6. 价格带映射
+### 6. 主数据列变更（新文件）
+- 资源位列由 `广告资源位` 变为 `tag_level_1`，值域包含 15 个目标资源位 + 13 个其他资源位
+- `广告位素材` 列已移除，卖点分析回退到 `camp_name`
+- `面向人群` 列已移除，分析脚本自动填充为 `'全部用户'`
+- 任何新增分析若涉及旧列名，必须先做 `if col not in df.columns` 的兼容性处理
+
+### 7. 价格带映射
 - `0元` / `1.1元` / `3.9元` / `其他`
 - 直接按 `sku_price` 精确匹配，不要四舍五入
 
-### 7. 品类名称映射（正式品/孵化品）
+### 8. 品类名称映射（正式品/孵化品）
 - Excel `category_name` 与 CSV `品类` 优先精确匹配
 - 未命中则 fallback 到包含匹配（Excel 名称包含于 CSV 名称，或反之）
 - 仍未命中则标记为「未分类」
 - 映射结果写入 `df['cat_type']`，用于价格带×品类类型分析和资源位×品类类型分析
 
-### 8. ECharts 旭日图（价格带×品类类型）
+### 9. ECharts 旭日图（价格带×品类类型）
 - 两层结构：内圈 `r0: '20%', r: '55%'` = 价格带；外圈 `r0: '55%', r: '70%'` = 正式品/孵化品
 - 外圈颜色固定：正式品 `#004ac6`，孵化品 `#4edea3`
 - `label.formatter` 中**严禁使用 `\n`**（Python f-string 会将其转为真实换行，导致 JS 语法错误）
 
-### 9. f-string 中的转义陷阱
+### 10. f-string 中的转义陷阱
 - **严禁**在 f-string 内使用 `\n`、 `\'`、 `\"` 等反斜杠转义序列
 - f-string 表达式中的反斜杠在 Python 3.12+ 之前直接报 SyntaxError；即使不报错，`
 ` 也会变成真实换行符注入 JS，导致整个 `renderCharts()` 函数解析失败、所有图表空白
 - **正确做法**：用普通字符串拼接，或在 f-string 外预处理换行
 
-### 10. 资源位衰退预警
+### 11. 资源位衰退预警
 - 规则：CVR 环比下滑 ≥ 10% 标黄「预警」，否则「正常」
 - 数据来源：直接使用 `resource_efficiency` 中已计算的环比数据，无需额外聚合
 - 呈现：在资源位效率矩阵表格最右列，用 badge 样式展示
 
-### 11. 资源位×价格带效率矩阵
+### 12. 资源位×价格带效率矩阵
 - 聚合维度：`广告资源位` × `price_band` × `stat_month`
 - 每价格带展示 3 个指标：线索数、首单数、CVR（`SUM(首单数) / SUM(线索数)`）
 - 底部汇总行：纵向合计全部 15 资源位在各价格带下的数据
@@ -154,6 +161,8 @@ TARGET_RESOURCES = [
 | 首单流水 | ¥454.58万 | ¥322.28万 | -29.10% |
 | 整体转化率 | 7.30% | 5.41% | -25.89% |
 | LTV 均值 | ¥125.97 | ¥92.12 | -26.88% |
+| 月活人数 (MAU) | 758,580 | 702,752 | -7.36% |
+| 线索生成率 | 2.38% | 2.49% | +4.51% |
 | 0元课占比 | 80.15% | 80.77% | +0.62pp |
 | 1.1元课占比 | 12.25% | 11.21% | -1.04pp |
 | 3.9元课占比 | 4.90% | 5.82% | +0.92pp |

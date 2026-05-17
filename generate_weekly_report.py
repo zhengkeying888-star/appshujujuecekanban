@@ -116,7 +116,7 @@ def generate_weekly_report(output_path: str = None) -> str:
 
 def write_to_feishu_doc(xml_content: str, doc_title: str = None) -> str:
     """将周报 XML 写入飞书文档，返回文档 URL"""
-    title = doc_title or f"APP 线索广告位投放周报（{datetime.now().strftime('%Y-%m-%d')}）"
+    # doc_title 保留用于 API 兼容性，实际文档标题取自 xml_content 中的 <title> 标签
 
     # 创建文档
     create_cmd = [
@@ -128,8 +128,17 @@ def write_to_feishu_doc(xml_content: str, doc_title: str = None) -> str:
     if result.returncode != 0:
         raise RuntimeError(f"创建飞书文档失败: {result.stderr}")
 
-    resp = json.loads(result.stdout)
+    try:
+        resp = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        preview = result.stdout[:500] if result.stdout else "<empty>"
+        raise RuntimeError(f"飞书 API 响应 JSON 解析失败: {e} — stdout preview: {preview}")
+
     doc_url = resp.get('url', '')
+    if not doc_url:
+        preview = result.stdout[:500] if result.stdout else "<empty>"
+        raise RuntimeError(f"飞书 API 响应中未包含文档 URL: {preview}")
+
     print(f"飞书文档已创建: {doc_url}")
     return doc_url
 

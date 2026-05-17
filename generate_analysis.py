@@ -413,21 +413,19 @@ for r in resource_efficiency:
         })
 
 # ============================================================
-# 10. 价格带分布（只看0/1/3/9）
+# 10. 价格带分布（0/1.1/3.9/其他）
 # ============================================================
 
-price_bands = ['0元', '1元', '3元', '9元', '其他']
+price_bands = ['0元', '1.1元', '3.9元', '其他']
 def map_price_band(price):
     if pd.isna(price):
         return '其他'
     if price == 0:
         return '0元'
-    if price == 1:
-        return '1元'
-    if price == 3:
-        return '3元'
-    if price == 9:
-        return '9元'
+    if price == 1.1:
+        return '1.1元'
+    if price == 3.9:
+        return '3.9元'
     return '其他'
 
 df_detail['price_band'] = df_detail['sku_price'].apply(map_price_band)

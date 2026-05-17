@@ -1,6 +1,5 @@
 """周报生成器：读取 data_analysis_output.json，生成飞书文档 XML"""
 import json
-import os
 from datetime import datetime
 
 REPORT_TEMPLATE = """<title>APP 线索广告位投放周报（{week_range}）</title>
@@ -20,22 +19,27 @@ REPORT_TEMPLATE = """<title>APP 线索广告位投放周报（{week_range}）</t
 
 
 def load_analysis_data(path: str = 'data_analysis_output.json') -> dict:
-    with open(path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"分析数据文件未找到: {path}")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"JSON 解析失败: {path} — {e}")
 
 
 def build_kpi_cards(data: dict) -> str:
     """生成 KPI 卡片 XML（调用 data-report skill 能力）"""
-    ms = data['monthly_summary']
-    m3 = ms['2026-03']
-    m4 = ms['2026-04']
-    mom = ms['环比']
+    ms = data.get('monthly_summary', {})
+    m3 = ms.get('2026-03', {})
+    m4 = ms.get('2026-04', {})
+    mom = ms.get('环比', {})
 
     cards = [
-        ('当月累计线索数', f"{m4['leads']:,}", f"{mom['leads']:+.1f}%"),
-        ('当月累计 GMV', f"¥{m4['gmv']/10000:.1f}万", f"{mom['gmv']:+.1f}%"),
-        ('首单转化率', f"{m4['cvr_from_leads']:.2f}%", f"{mom['cvr_from_leads']:+.1f}pp"),
-        ('LTV 均值', f"¥{m4['arpu']:.1f}", f"{mom['arpu']:+.1f}%"),
+        ('当月累计线索数', f"{m4.get('leads', 0):,}", f"{mom.get('leads', 0):+.1f}%"),
+        ('当月累计 GMV', f"¥{m4.get('gmv', 0)/10000:.1f}万", f"{mom.get('gmv', 0):+.1f}%"),
+        ('首单转化率', f"{m4.get('cvr_from_leads', 0):.2f}%", f"{mom.get('cvr_from_leads', 0):+.1f}pp"),
+        ('LTV 均值', f"¥{m4.get('arpu', 0):.1f}", f"{mom.get('arpu', 0):+.1f}%"),
     ]
 
     xml_parts = ['<grid>']
@@ -57,12 +61,12 @@ def build_resource_top5(data: dict) -> str:
 
     rows = []
     for r in top5:
-        name = r['resource']
+        name = r.get('resource', '未知资源位')
         m4 = r.get('2026-04', {})
         rows.append(
             f'<tr><td>{name}</td><td>{m4.get("leads", 0)}</td>'
             f'<td>¥{m4.get("gmv", 0)/10000:.1f}万</td>'
-            f'<td>{m4.get("cvr_from_leads", 0)*100:.2f}%</td></tr>'
+            f'<td>{m4.get("cvr_from_leads", 0):.2f}%</td></tr>'
         )
 
     return (
@@ -80,9 +84,9 @@ def build_strategy_summary(data: dict) -> str:
     items = []
     for i, card in enumerate(cards[:3], 1):
         items.append(
-            f'<p><strong>{i}. [{card["category"]}] {card["title"]}</strong></p>'
-            f'<p>{card["desc"]}</p>'
-            f'<p>预计 GMV 影响: {card["gmv_impact"]} | 风险: {card["risk"]}</p>'
+            f'<p><strong>{i}. [{card.get("category", "未分类")}] {card.get("title", "无标题")}</strong></p>'
+            f'<p>{card.get("desc", "")}</p>'
+            f'<p>预计 GMV 影响: {card.get("gmv_impact", "--")} | 风险: {card.get("risk", "--")}</p>'
         )
     return '\n'.join(items)
 

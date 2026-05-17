@@ -1,5 +1,6 @@
 """周报生成器：读取 data_analysis_output.json，生成飞书文档 XML"""
 import json
+import subprocess
 from datetime import datetime
 
 REPORT_TEMPLATE = """<title>APP 线索广告位投放周报（{week_range}）</title>
@@ -113,6 +114,32 @@ def generate_weekly_report(output_path: str = None) -> str:
     return report
 
 
+def write_to_feishu_doc(xml_content: str, doc_title: str = None) -> str:
+    """将周报 XML 写入飞书文档，返回文档 URL"""
+    title = doc_title or f"APP 线索广告位投放周报（{datetime.now().strftime('%Y-%m-%d')}）"
+
+    # 创建文档
+    create_cmd = [
+        'lark-cli', 'docs', '+create',
+        '--api-version', 'v2',
+        '--content', xml_content,
+    ]
+    result = subprocess.run(create_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"创建飞书文档失败: {result.stderr}")
+
+    resp = json.loads(result.stdout)
+    doc_url = resp.get('url', '')
+    print(f"飞书文档已创建: {doc_url}")
+    return doc_url
+
+
+def main():
+    """主入口：生成周报并写入飞书文档"""
+    xml = generate_weekly_report()
+    url = write_to_feishu_doc(xml)
+    print(f"周报已发布: {url}")
+
+
 if __name__ == '__main__':
-    xml = generate_weekly_report('weekly_report.xml')
-    print(f"周报已生成，长度: {len(xml)} 字符")
+    main()

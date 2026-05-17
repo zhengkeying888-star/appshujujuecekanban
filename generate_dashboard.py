@@ -189,6 +189,79 @@ for act in data['action_items']:
       <div class="text-helper text-on-surface-variant">依据：{act['basis']}</div>
     </div>"""
 
+# User Journey Map
+uj = data['user_journey']
+journey_diagnosis_cards = ""
+for d in uj['diagnosis']:
+    mom_val = float(d['mom'].replace('%', ''))
+    mom_cls = mom_color(mom_val)
+    arrow = mom_arrow(mom_val)
+    journey_diagnosis_cards += f"""
+    <div class="bg-surface-container-lowest border border-surface-variant rounded-lg p-4 flex flex-col gap-2 shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
+      <div class="flex items-center justify-between">
+        <span class="font-semibold text-on-surface">{d['stage']}</span>
+        <span class="px-2 py-0.5 rounded text-xs font-semibold bg-surface-container-high text-on-surface-variant">{d['owner']}</span>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="text-on-surface-variant">3月: <span class="font-medium text-on-surface">{d['march']}</span></span>
+        <span class="text-on-surface-variant">4月: <span class="font-medium text-on-surface">{d['april']}</span></span>
+        <span class="{mom_cls} flex items-center gap-0.5 font-medium"><span class="material-symbols-outlined text-[14px]">{arrow}</span>{d['mom']}</span>
+      </div>
+      <div class="text-helper text-on-surface-variant text-error">{d['issue']}</div>
+    </div>"""
+
+journey_section = f"""
+<!-- User Lifecycle Journey Map -->
+<section class="w-full flex flex-col gap-4 fade-in">
+  <h2 class="font-metric-sm text-metric-sm font-semibold text-on-surface border-b border-surface-variant pb-2 flex items-center gap-2">
+    <span class="material-symbols-outlined text-primary">map</span> 用户全生命周期旅程地图
+  </h2>
+  <div class="flex gap-gutter w-full h-[420px]">
+    <div class="w-[55%] bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
+      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2 border-b border-surface-variant pb-2">用户流转漏斗（模拟数据）</h3>
+      <div id="journey-funnel-chart" class="chart-container flex-grow"></div>
+    </div>
+    <div class="w-[45%] bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
+      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2 border-b border-surface-variant pb-2">各阶段转化率对比</h3>
+      <div id="journey-cvr-chart" class="chart-container flex-grow"></div>
+    </div>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
+    {journey_diagnosis_cards}
+  </div>
+  <div class="w-full bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col gap-3">
+    <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface border-b border-surface-variant pb-2 flex items-center gap-2">
+      <span class="material-symbols-outlined text-primary">schedule</span> APP 用户留存趋势（口径：整体登录用户）
+    </h3>
+    <div class="flex gap-gutter">
+      <div class="flex-1 flex flex-col gap-1 p-3 bg-surface-container-low rounded-lg">
+        <div class="text-helper text-on-surface-variant">7日留存率</div>
+        <div class="flex items-baseline gap-2">
+          <span class="font-metric-lg text-[24px] font-bold text-on-surface">{uj['april']['retention_7d_rate']}%</span>
+          <span class="text-helper {mom_color(uj['mom']['retention_7d_rate'])} flex items-center gap-0.5"><span class="material-symbols-outlined text-[14px]">{mom_arrow(uj['mom']['retention_7d_rate'])}</span>{uj['mom']['retention_7d_rate']:+.1f}%</span>
+        </div>
+        <div class="text-helper text-on-surface-variant">3月: {uj['march']['retention_7d_rate']}% → 4月: {uj['april']['retention_7d_rate']}%</div>
+      </div>
+      <div class="flex-1 flex flex-col gap-1 p-3 bg-surface-container-low rounded-lg">
+        <div class="text-helper text-on-surface-variant">30日留存率</div>
+        <div class="flex items-baseline gap-2">
+          <span class="font-metric-lg text-[24px] font-bold text-on-surface">{uj['april']['retention_30d_rate']}%</span>
+          <span class="text-helper {mom_color(uj['mom']['retention_30d_rate'])} flex items-center gap-0.5"><span class="material-symbols-outlined text-[14px]">{mom_arrow(uj['mom']['retention_30d_rate'])}</span>{uj['mom']['retention_30d_rate']:+.1f}%</span>
+        </div>
+        <div class="text-helper text-on-surface-variant">3月: {uj['march']['retention_30d_rate']}% → 4月: {uj['april']['retention_30d_rate']}%</div>
+      </div>
+      <div class="flex-1 flex flex-col gap-1 p-3 bg-surface-container-low rounded-lg">
+        <div class="text-helper text-on-surface-variant">留存衰减幅度</div>
+        <div class="flex items-baseline gap-2">
+          <span class="font-metric-lg text-[24px] font-bold text-on-surface">{abs(uj['march']['retention_7d_rate'] - uj['march']['retention_30d_rate']):.1f}pp / {abs(uj['april']['retention_7d_rate'] - uj['april']['retention_30d_rate']):.1f}pp</span>
+        </div>
+        <div class="text-helper text-on-surface-variant">3月 7日→30日衰减 vs 4月 7日→30日衰减</div>
+      </div>
+    </div>
+  </div>
+</section>
+"""
+
 td_rows = ""
 for td in data['threedim'][:20]:
     td_rows += f"""
@@ -319,23 +392,37 @@ for rte in data['resource_type_efficiency']:
       <td class="py-2 px-3">{tag_html}</td>
     </tr>"""
 
-# NEW: Price band diagnosis insight
+# NEW: Price band diagnosis insight (leads + GMV)
 pb = data['price_band_distribution']
+pb_gmv = data['price_band_distribution_gmv']
 zero_m3 = next((p for p in pb if p['price_band'] == '0元'), {'march': {'share': 0}, 'april': {'share': 0}, 'share_mom': 0})
 zero_m4_share = zero_m3['april']['share']
 zero_m3_share = zero_m3['march']['share']
 zero_mom_pp = zero_m3['share_mom']
 
+zero_m3_gmv = next((p for p in pb_gmv if p['price_band'] == '0元'), {'march': {'share': 0}, 'april': {'share': 0}, 'share_mom': 0})
+zero_m4_share_gmv = zero_m3_gmv['april']['share']
+zero_m3_share_gmv = zero_m3_gmv['march']['share']
+zero_mom_pp_gmv = zero_m3_gmv['share_mom']
+
 pb_diagnosis = ""
+# Leads-based insight
 if abs(zero_mom_pp) >= 1:
     direction = "上升" if zero_mom_pp > 0 else "下降"
-    pb_diagnosis = f"此外，0元课线索占比从 {zero_m3_share:.1f}% {direction}至 {zero_m4_share:.1f}%（{zero_mom_pp:+.1f}pp），"
-    if zero_mom_pp > 0:
-        pb_diagnosis += "低价引流结构加重，需关注高价值转化。"
-    else:
-        pb_diagnosis += "低价引流占比收窄，高价值课结构优化。"
+    pb_diagnosis += f"按线索数看，0元课占比从 {zero_m3_share:.1f}% {direction}至 {zero_m4_share:.1f}%（{zero_mom_pp:+.1f}pp）；"
 else:
-    pb_diagnosis = "0元课线索占比保持稳定。"
+    pb_diagnosis += "按线索数看，0元课占比保持稳定；"
+
+# GMV-based insight
+if abs(zero_mom_pp_gmv) >= 1:
+    direction_gmv = "上升" if zero_mom_pp_gmv > 0 else "下降"
+    pb_diagnosis += f"按GMV看，0元课占比从 {zero_m3_share_gmv:.1f}% {direction_gmv}至 {zero_m4_share_gmv:.1f}%（{zero_mom_pp_gmv:+.1f}pp）。"
+    if zero_mom_pp_gmv > 0:
+        pb_diagnosis += "低价课GMV贡献加重，需关注高价值转化。"
+    else:
+        pb_diagnosis += "低价课GMV贡献收窄。"
+else:
+    pb_diagnosis += "按GMV看，0元课占比保持稳定。"
 
 # MAU diagnosis insight
 mau = data.get('mau_summary', {})
@@ -575,6 +662,8 @@ html = f'''<!DOCTYPE html>
   </div>
 </section>
 
+{journey_section}
+
 <!-- Trend Charts -->
 <section class="flex gap-gutter w-full h-[400px] fade-in">
   <div class="w-2/3 bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
@@ -641,14 +730,28 @@ html = f'''<!DOCTYPE html>
   <h2 class="font-metric-sm text-metric-sm font-semibold text-on-surface border-b border-surface-variant pb-2 flex items-center gap-2">
     <span class="material-symbols-outlined text-primary">pie_chart</span> 价格带全局占比
   </h2>
-  <div class="flex gap-gutter w-full h-[420px]">
+
+  <!-- 线索数口径 -->
+  <div class="flex gap-gutter w-full h-[360px]">
     <div class="w-1/2 bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
-      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2">3月价格带分布</h3>
+      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2">3月价格带分布（按线索数）</h3>
       <div id="price-band-march-chart" class="chart-container flex-grow"></div>
     </div>
     <div class="w-1/2 bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
-      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2">4月价格带分布</h3>
+      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2">4月价格带分布（按线索数）</h3>
       <div id="price-band-april-chart" class="chart-container flex-grow"></div>
+    </div>
+  </div>
+
+  <!-- GMV口径 -->
+  <div class="flex gap-gutter w-full h-[360px]">
+    <div class="w-1/2 bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
+      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2">3月价格带分布（按GMV）</h3>
+      <div id="price-band-gmv-march-chart" class="chart-container flex-grow"></div>
+    </div>
+    <div class="w-1/2 bg-surface-container-lowest border border-surface-variant rounded-lg p-element-loose shadow-[0_2px_4px_rgba(0,0,0,0.04)] flex flex-col">
+      <h3 class="font-metric-sm text-metric-sm font-semibold text-on-surface mb-2">4月价格带分布（按GMV）</h3>
+      <div id="price-band-gmv-april-chart" class="chart-container flex-grow"></div>
     </div>
   </div>
 </section>
@@ -1277,6 +1380,50 @@ function renderCharts() {{
     }}
   }}
 
+  // Price band GMV donut charts
+  const pbGmvMarchEl = document.getElementById('price-band-gmv-march-chart');
+  const pbGmvAprilEl = document.getElementById('price-band-gmv-april-chart');
+  const pbColors = {{ '0元': '#004ac6', '1.1元': '#4edea3', '3.9元': '#f59e0b', '其他': '#94a3b8' }};
+  function buildPriceBandGmvOption(pbList) {{
+    const data = pbList.map(d => ({{
+      value: d.april.gmv,
+      name: d.price_band,
+      share: d.april.share,
+      itemStyle: {{ color: pbColors[d.price_band] || '#999' }}
+    }}));
+    return {{
+      tooltip: {{ trigger: 'item', formatter: function(p) {{ return p.name + ': ¥' + (p.value/10000).toFixed(1) + '万 (' + p.data.share.toFixed(1) + '%)'; }} }},
+      series: [{{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        avoidLabelOverlap: true,
+        itemStyle: {{ borderRadius: 6, borderColor: '#fff', borderWidth: 2 }},
+        label: {{ show: true, formatter: function(p) {{ if(p.percent < 3) return ''; return p.name + ' ' + p.data.share.toFixed(1) + '%'; }}, fontSize: 12 }},
+        labelLine: {{ show: true, length: 15, length2: 10 }},
+        data: data
+      }}]
+    }};
+  }}
+  if(pbGmvMarchEl) {{
+    const chart = echarts.init(pbGmvMarchEl);
+    const pbData = RAW_DATA.price_band_distribution_gmv || [];
+    const marchData = pbData.map(d => ({{ price_band: d.price_band, april: d.march }}));
+    if(currentMonth === 'april') {{
+      chart.clear();
+    }} else {{
+      chart.setOption(buildPriceBandGmvOption(marchData));
+    }}
+  }}
+  if(pbGmvAprilEl) {{
+    const chart = echarts.init(pbGmvAprilEl);
+    const pbData = RAW_DATA.price_band_distribution_gmv || [];
+    if(currentMonth === 'march') {{
+      chart.clear();
+    }} else {{
+      chart.setOption(buildPriceBandGmvOption(pbData));
+    }}
+  }}
+
   // Heatmap
   const heatmapEl = document.getElementById('heatmap-chart');
   if(heatmapEl) {{
@@ -1370,8 +1517,76 @@ function renderCharts() {{
     }});
   }}
 
+  // Journey Funnel Chart
+  const funnelEl = document.getElementById('journey-funnel-chart');
+  if(funnelEl) {{
+    const chart = echarts.init(funnelEl);
+    const jData = RAW_DATA.user_journey;
+    const stages = jData.stages;
+    const stageKeys = jData.stage_keys;
+    let funnelData;
+    if(currentMonth === 'march') {{
+      funnelData = stages.map((s, i) => ({{ value: jData.march[stageKeys[i]], name: s }}));
+    }} else if(currentMonth === 'april') {{
+      funnelData = stages.map((s, i) => ({{ value: jData.april[stageKeys[i]], name: s }}));
+    }} else {{
+      funnelData = stages.map((s, i) => ({{ value: jData.april[stageKeys[i]], name: s }}));
+    }}
+    chart.setOption({{
+      tooltip: {{ trigger: 'item', formatter: '{{b}}: {{c}}人' }},
+      color: ['#004ac6', '#2563eb', '#4edea3', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'],
+      series: [{{
+        type: 'funnel',
+        left: '10%',
+        top: 10,
+        bottom: 10,
+        width: '80%',
+        min: 0,
+        max: funnelData[0].value,
+        minSize: '0%',
+        maxSize: '100%',
+        sort: 'descending',
+        gap: 2,
+        label: {{ show: true, position: 'inside', formatter: '{{b}} {{c}}', fontSize: 11 }},
+        labelLine: {{ length: 10, lineStyle: {{ width: 1, type: 'solid' }} }},
+        itemStyle: {{ borderColor: '#fff', borderWidth: 1 }},
+        emphasis: {{ label: {{ fontSize: 14 }} }},
+        data: funnelData
+      }}]
+    }});
+  }}
+
+  // Journey CVR Comparison Chart
+  const cvrEl = document.getElementById('journey-cvr-chart');
+  if(cvrEl) {{
+    const chart = echarts.init(cvrEl);
+    const jData = RAW_DATA.user_journey;
+    const cvrMetrics = ['CTR', '点击→线索', '线索→首单', '首单→完课', '首单→正价'];
+    const marchCvr = [jData.march.ctr, jData.march.click_to_lead, jData.march.cvr, jData.march.completion_rate, jData.march.premium_rate];
+    const aprilCvr = [jData.april.ctr, jData.april.click_to_lead, jData.april.cvr, jData.april.completion_rate, jData.april.premium_rate];
+    let series = [];
+    if(currentMonth === 'march') {{
+      series = [{{ name: '3月', type: 'bar', data: marchCvr, itemStyle: {{ color: '#b4c5ff' }} }}];
+    }} else if(currentMonth === 'april') {{
+      series = [{{ name: '4月', type: 'bar', data: aprilCvr, itemStyle: {{ color: '#004ac6' }} }}];
+    }} else {{
+      series = [
+        {{ name: '3月', type: 'bar', data: marchCvr, itemStyle: {{ color: '#b4c5ff' }} }},
+        {{ name: '4月', type: 'bar', data: aprilCvr, itemStyle: {{ color: '#004ac6' }} }}
+      ];
+    }}
+    chart.setOption({{
+      tooltip: {{ trigger: 'axis', axisPointer: {{ type: 'shadow' }}, formatter: function(p) {{ let r = p[0].name + '<br/>'; p.forEach(i => {{ r += i.marker + ' ' + i.seriesName + ': ' + i.value + '%<br/>'; }}); return r; }} }},
+      legend: {{ bottom: 0 }},
+      grid: {{ left: 100, right: 30, top: 20, bottom: 40 }},
+      xAxis: {{ type: 'value', name: '转化率(%)', max: 100 }},
+      yAxis: {{ type: 'category', data: cvrMetrics, axisLabel: {{ fontSize: 11 }} }},
+      series: series
+    }});
+  }}
+
   window.addEventListener('resize', () => {{
-    ['trend-chart','pie-chart','category-bar-chart','category-pie-chart','heatmap-chart','wordcloud-chart','mau-level-chart'].forEach(id => {{
+    ['trend-chart','pie-chart','category-bar-chart','category-pie-chart','heatmap-chart','wordcloud-chart','mau-level-chart','price-band-gmv-march-chart','price-band-gmv-april-chart','journey-funnel-chart','journey-cvr-chart'].forEach(id => {{
       const el = document.getElementById(id);
       if(el) {{
         const inst = echarts.getInstanceByDom(el);

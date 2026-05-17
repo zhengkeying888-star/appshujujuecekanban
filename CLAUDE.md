@@ -16,12 +16,18 @@
 ```
 .
 ├── APP线索广告位拆解 3-4月更新版.xlsx   # 主数据源（37 列，含 stat_month, tag_level_1, camp_name, 线索数, 首单数, 首单流水, LTV, category_name, sku_price）
+├── APP线索广告位拆解 3-4月明细版本.xlsx  # 主数据源别名（与上者为同一文件，后链路汇总使用完整数据，不筛选 TARGET_RESOURCES）
+├── 4月广告位明细.xlsx                    # 前链路数据源（4月曝光、点击、售卖页浏览）
+├── APP广告位明细3月汇总.xlsx             # 前链路数据源（3月曝光、点击、售卖页浏览）
 ├── 3-4月月活人数.xlsx                    # 月活数据源（月份, 用户等级, 月活人数, 占比）
 ├── APP品类流量结构.csv                    # 品类流量结构数据源（区分正式品/孵化品）
+├── 【重要】品类归属.xlsx                  # 品类属性映射（兴趣线/健康线/变美线）
 ├── generate_analysis.py                  # 数据清洗与聚合分析脚本
 ├── data_analysis_output.json             # 分析结果 JSON（被 dashboard 内嵌读取）
-├── generate_dashboard.py                 # HTML 看板生成器（Python f-string 模板）
-├── dashboard/index.html                  # 最终交付物（单文件可运行）
+├── generate_dashboard.py                 # HTML 看板生成器 v1（旧版本）
+├── generate_dashboard_v2.py              # HTML 看板生成器 v2（当前版本，四屏叙事）
+├── dashboard/index.html                  # v1 最终交付物
+├── dashboard/v2/index.html               # v2 最终交付物（当前使用）
 ├── product_requirements.md               # PRD
 └── CLAUDE.md                             # 本文件
 ```
@@ -34,18 +40,20 @@ generate_analysis.py
   → 清洗、过滤合计行、计算指标
   → 输出 data_analysis_output.json
 
-generate_dashboard.py
+generate_dashboard_v2.py
   → 读取 data_analysis_output.json
   → Python f-string 拼接 HTML（含内嵌 CSS + JS + RAW_DATA）
-  → 输出 dashboard/index.html
+  → 输出 dashboard/v2/index.html
 ```
 
 **每次数据或模板改动后，必须依次运行两个脚本：**
 
 ```bash
-python3 generate_analysis.py   # 生成 data_analysis_output.json
-python3 generate_dashboard.py  # 生成 dashboard/index.html
+python3 generate_analysis.py      # 生成 data_analysis_output.json
+python3 generate_dashboard_v2.py  # 生成 dashboard/v2/index.html
 ```
+
+> v1 脚本 `generate_dashboard.py` 与 `dashboard/index.html` 已归档，不再维护。
 
 ## 关键约定（不可违背）
 
@@ -111,36 +119,86 @@ python3 generate_dashboard.py  # 生成 dashboard/index.html
 ### 12. 资源位×价格带效率矩阵
 - 聚合维度：`广告资源位` × `price_band` × `stat_month`
 - 每价格带展示 3 个指标：线索数、首单数、CVR（`SUM(首单数) / SUM(线索数)`）
-- 底部汇总行：纵向合计全部 15 资源位在各价格带下的数据
+- 底部汇总行：纵向合计全部 12 资源位在各价格带下的数据
 - 月份切换采用 **tbody 级显隐**（而非列级显隐）：生成三个独立 tbody（`#rp-march` / `#rp-april` / `#rp-compare`），通过 CSS 控制 `display: none`
 - 对比视图下 CVR 列附带环比变化（颜色 + 箭头）
 
-## 15 个目标资源位（固定列表）
+## 13. 数据管道前后链路分离（不可违背）
+
+月度汇总的后链路指标必须基于**完整的** `APP线索广告位拆解3-4月明细版本.xlsx`，不筛选 `TARGET_RESOURCES`。
+
+- **后链路指标**（线索数、首单数、首单流水、加好友数、到课数、完课数）：使用 `df_detail_full`（`TARGET_RESOURCES` 过滤前保存的副本）按月聚合
+- **前链路指标**（曝光UV、点击UV、售卖页浏览UV）：来自 `4月广告位明细.xlsx` / `APP广告位明细3月汇总.xlsx` 的聚合
+- **资源位级别分析**：才使用过滤后的 `df_detail`（仅包含 12 个目标资源位）
+
+```python
+# 必须在 TARGET_RESOURCES 过滤前保存完整数据
+df_detail_full = df_detail.copy()
+
+# 仅用于资源位级别分析
+df_detail = df_detail[df_detail['tag_level_1'].isin(TARGET_RESOURCES)].copy()
+
+# 月度汇总后链路指标使用 df_detail_full
+m3_total['leads'] = len(m3_full)  # m3_full = df_detail_full[df_detail_full['stat_month'] == '2026-03']
+```
+
+## 14. 规则变更必须经用户明确授权（不可违背）
+
+`TARGET_RESOURCES`、`AD_NAME_MAP`、`价格带映射`、`品类映射` 等已确认的业务规则，**未经授权严禁修改**。
+
+- 即使代码上「看起来更合理」，只要用户没有明确说改，就保持原样
+- 这些映射表是业务契约（business contract），不是技术优化点
+- 如需调整，必须先问用户：「XXX 映射/列表是否需要调整？」
+
+## 12 个目标资源位（固定列表，严禁擅自修改）
 
 ```python
 TARGET_RESOURCES = [
-    '选课中心', '首页弹窗', '学习页', '学习中心', '学习中心弹窗',
+    '选课中心', '首页弹窗', '学习页', '学习中心弹窗',
     '2025首页卡片1', '2025首页卡片5', '2025首页卡片10',
-    '2025首页banner', '2025课程banner', '热门推荐', '好课上新',
-    '名师好课', '个人主页', '社区koc'
+    '2025课程banner', '热门推荐',
+    '好课上新', '名师好课', '个人主页'
 ]
+```
+
+## 广告位名称映射（固定映射，严禁擅自修改）
+
+```python
+AD_NAME_MAP = {
+    '选课中心-名师好课': '名师好课',
+    '选课中心-好课上新': '好课上新',
+    '选课中心/商品列表': '选课中心',
+    '学习页-banner广告': '学习页',
+    '学习页-弹窗': '学习页',
+    '个人主页-课程': '个人主页',
+}
 ```
 
 ## 新增模块注意事项
 
 若后续增加新的分析模块，必须：
 1. 在 `generate_analysis.py` 中新增计算逻辑，将结果写入 `data_analysis_output.json`
-2. 在 `generate_dashboard.py` 中新增 HTML 区块和对应的 JS 图表初始化代码
+2. 在 `generate_dashboard_v2.py` 中新增 HTML 区块和对应的 JS 图表初始化代码
 3. 若涉及表格列，给表头和单元格加上 `col-march` / `col-april` / `col-compare` 类以支持月份切换
 4. 若涉及图表，在 `renderCharts()` 中根据 `currentMonth` 切换数据（参考趋势图/饼图/品类图/旭日图写法）
-5. 若涉及诊断文案动态数据，在 `generate_dashboard.py` 顶部 Python 逻辑中预计算，再注入 f-string
+5. 若涉及诊断文案动态数据，在 `generate_dashboard_v2.py` 顶部 Python 逻辑中预计算，再注入 f-string
+
+## 品类产出分析模块（Screen 3）
+
+- **数据来源**：`df_detail['category_name']` + `【重要】品类归属.xlsx` 映射的 `cat_attr`（兴趣线/健康线/变美线）
+- **品类明细表**：40 个品类，展示线索数、GMV、首单转化率、单线索产出、GMV/线索/CVR Top3 资源位
+- **点击联动**：点击品类行 → 下钻显示该品类的价格带结构饼图
+- **数据验证**：`category_summary`、`category_detail`、`category_price_band` 必须在 `generate_analysis.py` 运行后检查是否非空
 
 ## 常见问题
 
 | 问题 | 原因 | 解决 |
 |-----|------|------|
 | 3月线索数显示 36,132 | 合计行未过滤 | 检查 `df = df[df['stat_month'] != '合计']` 是否在计算前执行 |
+| 3月线索数显示 16,448（非 18,066） | 月度汇总用了过滤后的 `df_detail`（仅 TARGET_RESOURCES） | 后链路汇总必须使用 `df_detail_full`（过滤前保存的完整数据） |
+| 看板显示旧数据（如 16,037 线索数） | 浏览器缓存或打开的是旧文件 | 强制刷新（Cmd+Shift+R），确认打开的是 `dashboard/v2/index.html` |
 | 卖点关键词提取错误 | 正则未匹配 `【】` | 确认使用 `re.search(r'【(.+?)】', text)` |
+| 品类产出分析模块看不到 | `category_summary` / `category_detail` 为空 | 运行 `generate_analysis.py` 后检查 JSON 中品类字段是否非空；检查 `animate-in` opacity fallback 是否正常 |
 | 月份切换没区别 | CSS/JS 未正确注入 | 检查 `col-march/april/compare` 类、`updateKPI()`、`renderCharts()` 是否存在 |
 | f-string SyntaxError | f-string 表达式中包含反斜杠转义引号 | 改用字符串拼接，不要在 f-string 内用 `\'` 或 `\"` |
 | **所有 ECharts 图表空白** | f-string 中 `\n` 注入 JS 导致语法错误 | 将 `label: { formatter: '{b}\\n{d}%' }` 改为 `'{b} {d}%'` 或拼接处理 |
@@ -149,6 +207,7 @@ TARGET_RESOURCES = [
 | NameError 'apr' | `price_band_type` 计算在 CSV 解析之前 | 确保 `cat_type` 映射和 `price_band_type` 计算在 CSV 解析之后执行 |
 | 价格带矩阵月份切换无效 | 同一 tbody 内混合了多个月份的行数据 | 使用三个独立 tbody（`#rp-march/april/compare`），通过 CSS 控制 tbody 显隐，而非列级显隐 |
 | 健康状态列显示错位 | 表头新增了列但 tbody 行内未同步增加对应 td | 确保 `res_rows` 生成逻辑与表头 th 数量一致 |
+| 未经授权修改映射表后数据失真 | 擅自修改 `AD_NAME_MAP` 或 `TARGET_RESOURCES` | 这些映射表是业务契约，修改前必须经用户明确授权 |
 
 ## 数据验证基准
 
@@ -157,10 +216,10 @@ TARGET_RESOURCES = [
 | 指标 | 3月 | 4月 | 环比 |
 |-----|-----|-----|------|
 | 线索数 | 18,066 | 17,492 | -3.18% |
-| 首单数 | 1,318 | 1,161 | -11.91% |
-| 首单流水 | ¥227.44万 | ¥198.08万 | -12.91% |
-| 整体转化率 | 7.30% | 6.64% | -9.04% |
-| LTV 均值 | ¥125.89 | ¥113.24 | -10.05% |
+| 首单数 | 1,317 | 1,175 | -10.78% |
+| 首单流水 | ¥227.20万 | ¥199.34万 | -12.26% |
+| 整体转化率 | 7.29% | 6.72% | -7.82% |
+| LTV 均值 | ¥125.8 | ¥114.0 | -9.38% |
 | 月活人数 (MAU) | 758,580 | 702,752 | -7.36% |
 | 线索生成率 | 2.38% | 2.49% | +4.51% |
 | 0元课占比 | 80.15% | 80.77% | +0.62pp |

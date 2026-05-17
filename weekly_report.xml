@@ -1,0 +1,24 @@
+<title>APP 线索广告位投放周报（2026-05-17 所在周）</title>
+<h1>一、核心指标概览</h1>
+<grid>
+<card><div style="font-size:12px;color:#666">当月累计线索数</div><div style="font-size:24px;font-weight:700">17,492</div><div style="font-size:12px;color:red">-3.2%</div></card>
+<card><div style="font-size:12px;color:#666">当月累计 GMV</div><div style="font-size:24px;font-weight:700">¥199.3万</div><div style="font-size:12px;color:red">-12.3%</div></card>
+<card><div style="font-size:12px;color:#666">首单转化率</div><div style="font-size:24px;font-weight:700">6.72%</div><div style="font-size:12px;color:red">-7.8pp</div></card>
+<card><div style="font-size:12px;color:#666">LTV 均值</div><div style="font-size:24px;font-weight:700">¥114.0</div><div style="font-size:12px;color:red">-9.4%</div></card>
+</grid>
+<h1>二、月度进度 vs 上月同期</h1>
+<p>月度进度数据待实现</p>
+<h1>三、本周环比变化</h1>
+<p>周环比数据待实现</p>
+<h1>四、资源位效率 Top5</h1>
+<table><thead><tr><th>资源位</th><th>线索数</th><th>GMV</th><th>转化率</th></tr></thead><tbody><tr><td>选课中心</td><td>6073</td><td>¥92.3万</td><td>8.76%</td></tr>
+<tr><td>首页弹窗</td><td>5475</td><td>¥55.6万</td><td>6.36%</td></tr>
+<tr><td>2025首页卡片1</td><td>1720</td><td>¥17.1万</td><td>5.81%</td></tr>
+<tr><td>热门推荐</td><td>659</td><td>¥11.2万</td><td>9.71%</td></tr>
+<tr><td>个人主页</td><td>168</td><td>¥5.4万</td><td>16.07%</td></tr></tbody></table>
+<h1>五、价格带结构变化</h1>
+<p>价格带结构待实现</p>
+<h1>六、策略建议摘要</h1>
+<p><strong>1. [运营] 聚焦高产值资源位修复</strong></p><p>4月GMV环比下降12.3%，主要拖累来自选课中心，需专项排查其线索质量与价格带结构</p><p>预计 GMV 影响: +¥16万 | 风险: 高</p>
+<p><strong>2. [运营] 优化价格带结构</strong></p><p>单线索产出从¥126降至¥114，低价引流结构加重，需提升高客单价课程曝光占比</p><p>预计 GMV 影响: +¥21万 | 风险: 中</p>
+<p><strong>3. [产研] 优化落地页领课体验</strong></p><p>CTCVR（点击→领课转化率）从7.36%降至6.29%，落地页流失加剧，需A/B测试表单与流程</p><p>预计 GMV 影响: +¥5万 | 风险: 中</p>

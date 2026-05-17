@@ -55,6 +55,72 @@ def build_kpi_cards(data: dict) -> str:
     return '\n'.join(xml_parts)
 
 
+def build_price_band_chart(data: dict) -> str:
+    """生成价格带圆环饼图（预留 chart skill 接口）"""
+    pbd = data.get('price_band_distribution', [])
+    if not pbd:
+        return '<p>价格带数据不可用</p>'
+
+    # 构造 ECharts 配置，供后续 chart skill 调用
+    chart_config = {
+        'type': 'pie',
+        'radius': ['40%', '70%'],
+        'data': [
+            {'name': d['price_band'], 'value': d.get('april_leads', d.get('leads', 0))}
+            for d in pbd
+        ],
+    }
+    # 当前版本使用占位 div，后续可集成 chart skill 生成 base64 图片
+    return f'<div style="width:100%;height:300px" data-chart="{json.dumps(chart_config, ensure_ascii=False)}"></div>'
+
+
+def build_kpi_cards_enhanced(data: dict) -> str:
+    """生成增强版 KPI 卡片（预留 data-report skill 接口）"""
+    ms = data['monthly_summary']
+    m4 = ms['2026-04']
+    mom = ms['环比']
+
+    cards = [
+        {
+            'label': '当月累计线索数',
+            'value': f"{m4['leads']:,}",
+            'change': f"{mom['leads']:+.1f}%",
+            'status': 'danger' if mom['leads'] < 0 else 'success',
+        },
+        {
+            'label': '当月累计 GMV',
+            'value': f"¥{m4['gmv']/10000:.1f}万",
+            'change': f"{mom['gmv']:+.1f}%",
+            'status': 'danger' if mom['gmv'] < 0 else 'success',
+        },
+        {
+            'label': '首单转化率',
+            'value': f"{m4['cvr_from_leads']:.2f}%",
+            'change': f"{mom['cvr_from_leads']:+.1f}pp",
+            'status': 'danger' if mom['cvr_from_leads'] < 0 else 'success',
+        },
+        {
+            'label': 'LTV 均值',
+            'value': f"¥{m4['arpu']:.1f}",
+            'change': f"{mom['arpu']:+.1f}%",
+            'status': 'danger' if mom['arpu'] < 0 else 'success',
+        },
+    ]
+
+    xml_parts = ['<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">']
+    for card in cards:
+        color = '#ef4444' if card['status'] == 'danger' else '#22c55e'
+        xml_parts.append(
+            f'<div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px">'
+            f'<div style="font-size:12px;color:#6b7280">{card["label"]}</div>'
+            f'<div style="font-size:28px;font-weight:700;margin-top:8px">{card["value"]}</div>'
+            f'<div style="font-size:13px;color:{color};margin-top:4px">{card["change"]}</div>'
+            f'</div>'
+        )
+    xml_parts.append('</div>')
+    return '\n'.join(xml_parts)
+
+
 def build_resource_top5(data: dict) -> str:
     """生成资源位 Top5 表格 XML"""
     re_list = data.get('resource_efficiency', [])

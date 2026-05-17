@@ -13,13 +13,21 @@ class FeishuDataSource:
         if not self.base_token:
             raise ValueError("Feishu base token not configured")
 
-    def _run_cli(self, cmd: list) -> dict:
+    def _run_cli(self, cmd: list[str]) -> dict:
         """执行 lark-cli 命令并解析 JSON 输出"""
         full_cmd = ['lark-cli', '--as', 'user'] + cmd
-        result = subprocess.run(full_cmd, capture_output=True, text=True)
+        result = subprocess.run(full_cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
-            raise RuntimeError(f"lark-cli failed: {result.stderr}")
-        return json.loads(result.stdout)
+            stderr_msg = result.stderr.strip() if result.stderr else 'unknown error'
+            raise RuntimeError(f"lark-cli failed: {stderr_msg}")
+        if result.stderr:
+            stderr_msg = result.stderr.strip()
+            raise RuntimeError(f"lark-cli stderr: {stderr_msg}")
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError as e:
+            stdout_preview = result.stdout[:500]
+            raise RuntimeError(f"lark-cli JSON parse error: {e}. stdout preview: {stdout_preview}")
 
     def read_table(self, table_name: str) -> pd.DataFrame:
         """读取指定表的全部数据"""
@@ -57,7 +65,7 @@ class FeishuDataSource:
                 break
             page_token = resp.get('page_token')
 
-        df = pd.DataFrame(records)
+        df = pd.DataFrame(records, columns=['record_id'] + field_names)
         return df
 
     def read_backend_data(self, month: str) -> pd.DataFrame:

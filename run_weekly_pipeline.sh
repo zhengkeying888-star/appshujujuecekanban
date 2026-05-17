@@ -57,6 +57,18 @@ cd "output/chart-html/weekly-report-${CURRENT_MONTH}"
 lark-cli docs +media-insert --doc "$DOC_TOKEN" --file screenshot.png
 
 echo ""
+echo "[4/4] 推送企微机器人..."
+python3 -c "
+import sys, os
+sys.path.insert(0, '/Users/zhengkeying/agent teams作业')
+from wecom_bot import send_weekly_report
+import json
+with open('weekly_report_data.json', 'r') as f:
+    data = json.load(f)
+send_weekly_report(data, feishu_url='${DOC_URL}')
+"
+
+echo ""
 echo "========================================"
 echo "周报生成完成！"
 echo "飞书文档: ${DOC_URL}"

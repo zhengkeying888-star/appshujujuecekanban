@@ -9,7 +9,7 @@ if USE_FEISHU:
     from feishu_reader import FeishuDataSource
     ds = FeishuDataSource()
     df_detail = ds.read_backend_data('2026-03')
-    df_detail = pd.concat([df_detail, ds.read_backend_data('2026-04')])
+    df_detail = pd.concat([df_detail, ds.read_backend_data('2026-04')], ignore_index=True)
     m3_ad = ds.read_frontend_data('2026-03')
     m4_ad = ds.read_frontend_data('2026-04')
     mau_df = ds.read_mau_data()
@@ -107,9 +107,10 @@ TARGET_RESOURCES = [
 ]
 
 # 映射广告位明细中的资源位
-for df in [m3_ad, m4_ad]:
-    df['resource'] = df['广告位名称'].map(AD_NAME_MAP).fillna(df['广告位名称'])
-    df = df[~df['广告位名称'].isin(['H5-课程播放页-广告'])].copy()
+m3_ad['resource'] = m3_ad['广告位名称'].map(AD_NAME_MAP).fillna(m3_ad['广告位名称'])
+m4_ad['resource'] = m4_ad['广告位名称'].map(AD_NAME_MAP).fillna(m4_ad['广告位名称'])
+m3_ad = m3_ad[~m3_ad['广告位名称'].isin(['H5-课程播放页-广告'])].copy()
+m4_ad = m4_ad[~m4_ad['广告位名称'].isin(['H5-课程播放页-广告'])].copy()
 
 # 保留完整的后链路数据用于月度汇总（不筛选资源位）
 df_detail_full = df_detail.copy()

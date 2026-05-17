@@ -4,3 +4,28 @@ stitch_app_bi/
 stitch_app_bi.zip
 stitch-ui-prompt.md
 docs/
+
+# Environment & secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Logs & temp files
+*.log
+*.bak
+*.tmp
+cron.log
+
+# Generated outputs
+data_analysis_output.json
+dashboard/index.html
+dashboard/v2/index.html
+
+# Cleaned CSVs for Feishu import
+*.clean.csv

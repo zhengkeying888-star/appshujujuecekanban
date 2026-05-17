@@ -1,10 +1,19 @@
 import json, os
 
 DATA_PATH = '/Users/zhengkeying/agent teams作业/data_analysis_output.json'
+WEEKLY_DATA_PATH = '/Users/zhengkeying/agent teams作业/weekly_report_data.json'
 OUTPUT_PATH = '/Users/zhengkeying/agent teams作业/dashboard/v2/index.html'
 
 with open(DATA_PATH, 'r', encoding='utf-8') as f:
     data = json.load(f)
+
+# Load weekly report data if available
+weekly_data = None
+try:
+    with open(WEEKLY_DATA_PATH, 'r', encoding='utf-8') as f:
+        weekly_data = json.load(f)
+except Exception:
+    pass
 
 # Unpack data
 cd = data['core_diagnosis']
@@ -344,6 +353,153 @@ def build_checklist():
       </div>''')
     return '\n'.join(items)
 
+# Build weekly view HTML helpers
+def build_weekly_kpi_cards():
+    if not weekly_data:
+        return '<div class="card animate-in"><p>暂无周报数据</p></div>'
+    meta = weekly_data['meta']
+    cur = weekly_data['summary']['current']
+    mom = weekly_data['summary']['mom']
+    cards = []
+    # 线索数
+    leads_color = 'var(--success)' if mom['leads'] >= 0 else 'var(--danger)'
+    leads_arrow = '↑' if mom['leads'] >= 0 else '↓'
+    cards.append(f'''<div class="card animate-in">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">线索数 (MTD)</div>
+      <div style="font-size:28px;font-weight:700">{int(cur['leads']):,}</div>
+      <div style="font-size:13px;color:{leads_color};margin-top:4px">{leads_arrow} {abs(mom['leads']):.2f}% vs 上月同期</div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px">目标: {int(cur['leads_goal']):,} | 差距: {cur['leads_gap']:+}</div>
+    </div>''')
+    # GMV
+    gmv_color = 'var(--success)' if mom['gmv'] >= 0 else 'var(--danger)'
+    gmv_arrow = '↑' if mom['gmv'] >= 0 else '↓'
+    cards.append(f'''<div class="card animate-in">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">GMV (MTD)</div>
+      <div style="font-size:28px;font-weight:700">¥{cur['gmv']/10000:.1f}万</div>
+      <div style="font-size:13px;color:{gmv_color};margin-top:4px">{gmv_arrow} {abs(mom['gmv']):.2f}% vs 上月同期</div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px">目标: ¥{cur['gmv_goal']/10000:.1f}万 | 差距: ¥{cur['gmv_gap']/10000:.1f}万</div>
+    </div>''')
+    # CVR
+    cvr_color = 'var(--success)' if mom['cvr'] >= 0 else 'var(--danger)'
+    cvr_arrow = '↑' if mom['cvr'] >= 0 else '↓'
+    cards.append(f'''<div class="card animate-in">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">转化率 (CVR)</div>
+      <div style="font-size:28px;font-weight:700">{cur['cvr']}%</div>
+      <div style="font-size:13px;color:{cvr_color};margin-top:4px">{cvr_arrow} {abs(mom['cvr']):.2f}pp vs 上月同期</div>
+    </div>''')
+    # 线索生成率
+    lgr_color = 'var(--success)' if mom['lead_gen_rate'] >= 0 else 'var(--danger)'
+    lgr_arrow = '↑' if mom['lead_gen_rate'] >= 0 else '↓'
+    cards.append(f'''<div class="card animate-in">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">线索生成率</div>
+      <div style="font-size:28px;font-weight:700">{cur['lead_gen_rate']}%</div>
+      <div style="font-size:13px;color:{lgr_color};margin-top:4px">{lgr_arrow} {abs(mom['lead_gen_rate']):.2f}pp vs 上月同期</div>
+    </div>''')
+    return '\n'.join(cards)
+
+def build_weekly_movers_table():
+    if not weekly_data:
+        return ''
+    movers = weekly_data.get('resource_movers', [])
+    rows = []
+    for m in movers[:5]:
+        change_color = 'text-success' if m['leads_change'] >= 0 else 'text-danger'
+        change_arrow = '↑' if m['leads_change'] >= 0 else '↓'
+        rows.append(f'''<tr>
+          <td><strong>{m['resource']}</strong></td>
+          <td>{int(m['leads_cur']):,}</td>
+          <td>{int(m['leads_prev']):,}</td>
+          <td class="{change_color}">{change_arrow} {abs(m['leads_change']):,}</td>
+          <td>{m['cvr_cur']:.2f}%</td>
+          <td>{m['cvr_prev']:.2f}%</td>
+        </tr>''')
+    return '\n'.join(rows)
+
+def build_weekly_category_table():
+    if not weekly_data:
+        return '<p style="color:var(--text-tertiary)">无品类下钻数据</p>'
+    cat_breakdown = weekly_data.get('category_breakdown', [])
+    top_resource = weekly_data.get('resource_movers', [{}])[0].get('resource', '')
+    cur_cats = [c for c in cat_breakdown if c['month'] == 'cur' and c['resource'] == top_resource]
+    prev_cats = [c for c in cat_breakdown if c['month'] == 'prev' and c['resource'] == top_resource]
+    if not cur_cats:
+        return '<p style="color:var(--text-tertiary)">无品类下钻数据</p>'
+    cur_cats = sorted(cur_cats, key=lambda x: -x['leads'])
+    rows = []
+    for c in cur_cats[:8]:
+        prev = next((p for p in prev_cats if p['category'] == c['category']), None)
+        mom_str = ''
+        if prev and prev['leads'] > 0:
+            mom_pct = (c['leads'] - prev['leads']) / prev['leads'] * 100
+            mom_color = 'var(--success)' if mom_pct >= 0 else 'var(--danger)'
+            mom_arrow = '↑' if mom_pct >= 0 else '↓'
+            mom_str = f'<span style="color:{mom_color};font-size:11px">{mom_arrow}{abs(mom_pct):.1f}%</span>'
+        rows.append(f'''<tr>
+          <td>{c['category']}</td>
+          <td>{int(c['leads']):,}</td>
+          <td>{c['cvr']:.2f}%</td>
+          <td>¥{c['gmv']/10000:.1f}万</td>
+          <td>{mom_str}</td>
+        </tr>''')
+    return '\n'.join(rows)
+
+def build_weekly_priceband_table():
+    if not weekly_data:
+        return '<p style="color:var(--text-tertiary)">无价格带下钻数据</p>'
+    pb_breakdown = weekly_data.get('price_band_breakdown', [])
+    top_resource = weekly_data.get('resource_movers', [{}])[0].get('resource', '')
+    cur_pb = [c for c in pb_breakdown if c['month'] == 'cur' and c['resource'] == top_resource]
+    prev_pb = [c for c in pb_breakdown if c['month'] == 'prev' and c['resource'] == top_resource]
+    if not cur_pb:
+        return '<p style="color:var(--text-tertiary)">无价格带下钻数据</p>'
+    cur_pb = sorted(cur_pb, key=lambda x: -x['leads'])
+    rows = []
+    for c in cur_pb:
+        prev = next((p for p in prev_pb if p['price_band'] == c['price_band']), None)
+        mom_str = ''
+        if prev and prev['leads'] > 0:
+            mom_pct = (c['leads'] - prev['leads']) / prev['leads'] * 100
+            mom_color = 'var(--success)' if mom_pct >= 0 else 'var(--danger)'
+            mom_arrow = '↑' if mom_pct >= 0 else '↓'
+            mom_str = f'<span style="color:{mom_color};font-size:11px">{mom_arrow}{abs(mom_pct):.1f}%</span>'
+        cvr_val = c.get('cvr', 0)
+        gmv_val = c.get('gmv', 0)
+        cvr_str = f'{cvr_val:.2f}%' if cvr_val else '-'
+        gmv_str = f'¥{gmv_val/10000:.1f}万' if gmv_val else '-'
+        rows.append(f'''<tr>
+          <td>{c['price_band']}</td>
+          <td>{int(c['leads']):,}</td>
+          <td>{cvr_str}</td>
+          <td>{gmv_str}</td>
+          <td>{mom_str}</td>
+        </tr>''')
+    return '\n'.join(rows)
+
+def build_weekly_insights():
+    if not weekly_data:
+        return '暂无周报数据'
+    movers = weekly_data.get('resource_movers', [])
+    if not movers:
+        return '暂无资源位变动数据'
+    top_gainer = max(movers, key=lambda x: x['leads_change'])
+    top_loser = min(movers, key=lambda x: x['leads_change'])
+    cur = weekly_data['summary']['current']
+    mom = weekly_data['summary']['mom']
+    lines = []
+    lines.append(f'• 线索数 MTD 为 {int(cur["leads"]):,}，{"高于" if mom["leads"] >= 0 else "低于"}上月同期 {abs(mom["leads"]):.2f}%。')
+    lines.append(f'• GMV MTD 为 ¥{cur["gmv"]/10000:.1f}万，{"高于" if mom["gmv"] >= 0 else "低于"}上月同期 {abs(mom["gmv"]):.2f}%。')
+    lines.append(f'• 资源位变动最大增长：{top_gainer["resource"]}（{top_gainer["leads_change"]:+} 条线索）。')
+    if top_loser['leads_change'] < 0:
+        lines.append(f'• 资源位变动最大下降：{top_loser["resource"]}（{top_loser["leads_change"]} 条线索），需重点关注。')
+    gap_text = ''
+    if cur.get('leads_gap', 0) != 0:
+        gap_text += f'线索差距 {cur["leads_gap"]:+} 条；'
+    if cur.get('gmv_gap', 0) != 0:
+        gap_text += f'GMV 差距 ¥{cur["gmv_gap"]/10000:.1f}万。'
+    if gap_text:
+        lines.append(f'• 月度目标进度：{gap_text}')
+    return '<br>'.join(lines)
+
 # Build HTML
 html_content = f'''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -472,9 +628,10 @@ a{{text-decoration:none;color:inherit}}
     <span class="nav-sub">2026年3-4月</span>
   </div>
   <div class="nav-tabs">
-    <button type="button" class="nav-tab active" onclick="setMonth('march', this)">3月</button>
-    <button type="button" class="nav-tab" onclick="setMonth('april', this)">4月</button>
-    <button type="button" class="nav-tab" onclick="setMonth('compare', this)">对比分析</button>
+    <button type="button" class="nav-tab active" onclick="setView('march', this)">3月</button>
+    <button type="button" class="nav-tab" onclick="setView('april', this)">4月</button>
+    <button type="button" class="nav-tab" onclick="setView('compare', this)">对比分析</button>
+    <button type="button" class="nav-tab" onclick="setView('weekly', this)">周视图</button>
   </div>
   <button type="button" class="btn-primary" onclick="exportReport(this)">
     <span class="material-symbols-outlined" style="font-size:16px">download</span>
@@ -763,6 +920,75 @@ a{{text-decoration:none;color:inherit}}
   </div>
 </div>
 
+<!-- Screen Weekly -->
+<div class="screen" id="screen-weekly" style="display:none">
+  <div class="screen-title">周视图 · {weekly_data['meta']['current_month'] if weekly_data else '月度进度'} MTD 周报</div>
+  <div class="grid-4" style="margin-bottom:20px">
+    {build_weekly_kpi_cards()}
+  </div>
+  <div class="grid-2" style="margin-bottom:20px">
+    <div class="card animate-in">
+      <div class="section-title">
+        <span class="material-symbols-outlined">trending_up</span>
+        资源位线索变化 Top5
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead>
+            <tr><th>资源位</th><th>本月线索</th><th>上月同期</th><th>变化</th><th>本月CVR</th><th>上月CVR</th></tr>
+          </thead>
+          <tbody>
+            {build_weekly_movers_table()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card animate-in">
+      <div class="section-title">
+        <span class="material-symbols-outlined">trending_down</span>
+        核心问题与下一步动作
+      </div>
+      <div style="font-size:14px;color:var(--text-secondary);line-height:1.8">
+        {build_weekly_insights()}
+      </div>
+    </div>
+  </div>
+  <div class="grid-2" style="margin-bottom:20px">
+    <div class="card animate-in">
+      <div class="section-title">
+        <span class="material-symbols-outlined">category</span>
+        「{weekly_data.get('resource_movers', [{}])[0].get('resource', 'Top资源位') if weekly_data else 'Top资源位'}」品类线索分布
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead>
+            <tr><th>品类</th><th>线索数</th><th>转化率</th><th>GMV</th><th>环比</th></tr>
+          </thead>
+          <tbody>
+            {build_weekly_category_table()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card animate-in">
+      <div class="section-title">
+        <span class="material-symbols-outlined">payments</span>
+        「{weekly_data.get('resource_movers', [{}])[0].get('resource', 'Top资源位') if weekly_data else 'Top资源位'}」价格带线索分布
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead>
+            <tr><th>价格带</th><th>线索数</th><th>转化率</th><th>GMV</th><th>环比</th></tr>
+          </thead>
+          <tbody>
+            {build_weekly_priceband_table()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="footer">APP 商业化决策看板 · 2026年3-4月</div>
 
 </div>
@@ -770,12 +996,32 @@ a{{text-decoration:none;color:inherit}}
 <script>
 const RAW_DATA = {raw_data_json};
 let currentMonth = 'march';
+let currentView = 'monthly';
 
-function setMonth(m, el) {{
-  currentMonth = m;
+function setView(view, el) {{
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   if (el) el.classList.add('active');
-  renderCharts();
+
+  const monthlyScreens = ['screen1', 'screen2', 'screen3', 'screen4'];
+  const weeklyScreen = document.getElementById('screen-weekly');
+
+  if (view === 'weekly') {{
+    currentView = 'weekly';
+    monthlyScreens.forEach(id => {{
+      const s = document.getElementById(id);
+      if (s) s.style.display = 'none';
+    }});
+    if (weeklyScreen) weeklyScreen.style.display = 'block';
+  }} else {{
+    currentView = 'monthly';
+    currentMonth = view;
+    if (weeklyScreen) weeklyScreen.style.display = 'none';
+    monthlyScreens.forEach(id => {{
+      const s = document.getElementById(id);
+      if (s) s.style.display = 'block';
+    }});
+    renderCharts();
+  }}
 }}
 
 function renderCharts() {{

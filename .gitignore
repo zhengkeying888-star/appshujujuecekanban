@@ -27,7 +27,6 @@ data_analysis_output.json
 weekly_report_data.json
 weekly_report_content.md
 dashboard/index.html
-dashboard/v2/index.html
 output/
 cached_data/
 

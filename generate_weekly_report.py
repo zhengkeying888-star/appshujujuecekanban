@@ -356,7 +356,21 @@ for month in ['2026-03', '2026-04', '2026-05']:
     daily_lead_gen_rate[month] = rate_list
 
 # ============================================================
-# 12. 组装输出
+# 12. 日均流速计算（MTD 1-latest_day 日均线索数）
+# ============================================================
+def calc_daily_avg_leads(month_str):
+    days_data = daily_trends.get(month_str, [])
+    mtd_days = [d for d in days_data if d['day'] <= latest_day]
+    total = sum(d['leads'] for d in mtd_days)
+    return round(total / len(mtd_days), 1) if mtd_days else 0
+
+cur_daily_avg = calc_daily_avg_leads(current_month)
+prev_daily_avg = calc_daily_avg_leads(prev_month)
+cur_front['daily_avg_leads'] = cur_daily_avg
+prev_front['daily_avg_leads'] = prev_daily_avg
+
+# ============================================================
+# 13. 组装输出
 # ============================================================
 output = {
     'meta': {
@@ -378,6 +392,7 @@ output = {
             'lead_rate': round(cur_front['lead_rate'] - prev_front['lead_rate'], 2),
             'browse_rate': round(cur_front['browse_rate'] - prev_front['browse_rate'], 2),
             'mau': round((cur_mau - prev_mau) / prev_mau * 100, 2) if prev_mau else 0,
+            'daily_avg_leads': round((cur_daily_avg - prev_daily_avg) / prev_daily_avg * 100, 2) if prev_daily_avg else 0,
         },
     },
     'resource_movers': top_movers,

@@ -156,6 +156,7 @@ def generate_report_content():
 | CTR（点击率） | {cur['ctr']}% | {prev['ctr']}% | {'↑' if mom['ctr'] >= 0 else '↓'} {abs(mom['ctr'])}pp | — | — |
 | 线索生成率 | {cur['lead_rate']}% | {prev['lead_rate']}% | {'↑' if mom['lead_rate'] >= 0 else '↓'} {abs(mom['lead_rate'])}pp | — | — |
 | 月活 (MAU) | {cur.get('mau', 0):,} | {prev.get('mau', 0):,} | {'↑' if mom.get('mau', 0) >= 0 else '↓'} {abs(mom.get('mau', 0))}% | — | — |
+| 日均流速 | {cur.get('daily_avg_leads', 0):.1f} 条/日 | {prev.get('daily_avg_leads', 0):.1f} 条/日 | {'↑' if mom.get('daily_avg_leads', 0) >= 0 else '↓'} {abs(mom.get('daily_avg_leads', 0))}% | — | — |
 
 **线索目标进度**：本月 MTD 线索 {cur['leads_backend']:,} 条，目标 {cur['leads_goal']:,} 条，达成率 {round(cur['leads_backend'] / cur['leads_goal'] * 100, 1) if cur['leads_goal'] else 0}%，缺口 {cur['leads_gap']:,} 条。
 

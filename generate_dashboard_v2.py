@@ -522,6 +522,15 @@ def build_weekly_kpi_cards():
       <div style="font-size:28px;font-weight:700">{int(cur.get('mau', 0)):,}</div>
       <div style="font-size:13px;color:{mau_color};margin-top:4px">{mau_arrow} {abs(mom.get('mau', 0)):.2f}% vs 上月</div>
     </div>''')
+    # 日均流速
+    dal_color = 'var(--success)' if mom.get('daily_avg_leads', 0) >= 0 else 'var(--danger)'
+    dal_arrow = '↑' if mom.get('daily_avg_leads', 0) >= 0 else '↓'
+    cards.append(f'''<div class="card animate-in">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">日均流速</div>
+      <div style="font-size:28px;font-weight:700">{cur.get('daily_avg_leads', 0):.1f}</div>
+      <div style="font-size:13px;color:{dal_color};margin-top:4px">{dal_arrow} {abs(mom.get('daily_avg_leads', 0)):.2f}% vs 上月同期</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">上月同期: {weekly_data['summary']['previous'].get('daily_avg_leads', 0):.1f} 条/日</div>
+    </div>''')
     return '\n'.join(cards)
 
 def build_weekly_movers_table():

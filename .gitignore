@@ -24,8 +24,27 @@ cron.log
 
 # Generated outputs
 data_analysis_output.json
+weekly_report_data.json
+weekly_report_content.md
 dashboard/index.html
 dashboard/v2/index.html
+output/
+cached_data/
+
+# State / cache
+.auto_report_state.json
+.last_weekly_doc.json
+
+# Data files (large, user-provided)
+*.xlsx
+*.csv
+!APP品类流量结构.csv
+
+# Base import staging
+base_import/
+
+# Claude workspace
+.claude/
 
 # Cleaned CSVs for Feishu import
 *.clean.csv

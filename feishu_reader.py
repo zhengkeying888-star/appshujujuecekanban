@@ -1,17 +1,50 @@
 """从飞书多维表格读取数据的封装层"""
+import os
 import subprocess
 import json
 import pandas as pd
+from pathlib import Path
 from feishu_config import get_table_id, get_base_token
 
 
-class FeishuDataSource:
-    """飞书多维表格数据源"""
+# 防御性字段映射：若 Base 中字段名被改为纯中文，自动映射回代码使用的列名
+# 当前 Base 列名与原始 Excel 一致（中英文混合），此映射暂不生效，为未来结构调整预留
+FIELD_MAP = {
+    '数据月份': 'stat_month',
+    '订单时间': 'order_time',
+    '广告资源位': 'tag_level_1',
+    '活动名称': 'camp_name',
+    '品类名称': 'category_name',
+    '课程价格': 'sku_price',
+    '是否加好友': 'is_add_friend',
+    '首单数': '首单数',
+    '首单流水': '首单流水',
+    '是否到课': '是否到课',
+    '曝光UV': '曝光uv',
+    '点击UV': '点击uv',
+    '售卖页浏览UV': '售卖页浏览uv',
+    '线索数': '线索数',
+    '首单订单数': '首单订单数',
+    '首单订单金额': '首单订单金额',
+    '日活人数': '日活人数',
+    '月份': '月份',
+    '用户等级': '用户等级',
+    '月活人数': '月活人数',
+    '占比': '占比',
+    '品类': '品类',
+    '品类区别': '品类区别',
+}
 
-    def __init__(self, base_token: str = None):
+
+CACHE_DIR = Path(__file__).parent / 'cached_data'
+
+class FeishuDataSource:
+    """飞书多维表格数据源（支持本地 CSV 缓存加速）"""
+
+    def __init__(self, base_token: str = None, cache_dir: str = None):
         self.base_token = base_token or get_base_token()
-        if not self.base_token:
-            raise ValueError("Feishu base token not configured")
+        self.cache_dir = Path(cache_dir) if cache_dir else CACHE_DIR
+        self.use_cache = os.environ.get('USE_FEISHU_CACHE', 'false').lower() == 'true'
 
     def _run_cli(self, cmd: list[str]) -> dict:
         """执行 lark-cli 命令并解析 JSON 输出"""
@@ -35,11 +68,27 @@ class FeishuDataSource:
 
     def read_table(self, table_name: str) -> pd.DataFrame:
         """读取指定表的全部数据"""
+        # 若启用缓存且本地 CSV 存在，直接读取（加速迭代）
+        if self.use_cache:
+            cache_path = self.cache_dir / f'{table_name}.csv'
+            if cache_path.exists():
+                df = pd.read_csv(cache_path, dtype=str, keep_default_na=True)
+                # 数值列自动转换
+                for col in df.columns:
+                    try:
+                        df[col] = pd.to_numeric(df[col], errors='ignore')
+                    except Exception:
+                        pass
+                return df
         table_id = get_table_id(table_name)
+        # 优先使用表级别的 base token（不同表可能分布在不同 Base）
+        base_token = get_base_token(table_name) or self.base_token
+        if not base_token:
+            raise ValueError(f"Base token not configured for table: {table_name}")
         # 先获取字段结构
         fields_resp = self._run_cli([
             'base', '+field-list',
-            '--base-token', self.base_token,
+            '--base-token', base_token,
             '--table-id', table_id,
         ])
         # field-list 返回结构: data.fields，字段对象使用 'name' 键
@@ -53,7 +102,7 @@ class FeishuDataSource:
         while True:
             cmd = [
                 'base', '+record-list',
-                '--base-token', self.base_token,
+                '--base-token', base_token,
                 '--table-id', table_id,
                 '--limit', str(limit),
                 '--offset', str(offset),
@@ -81,6 +130,14 @@ class FeishuDataSource:
         df = pd.DataFrame(records)
         cols = ['record_id'] + [c for c in df.columns if c != 'record_id']
         df = df[cols]
+        # 防御性：Base 某些字段（如被误识别为单选/多选）会返回单元素列表，自动展平为标量
+        for col in df.columns:
+            if df[col].apply(lambda x: isinstance(x, list)).any():
+                df[col] = df[col].apply(lambda x: x[0] if isinstance(x, list) and len(x) > 0 else x)
+        # 应用字段名映射（防御性：若 Base 字段名与代码不一致，自动对齐）
+        rename_dict = {k: v for k, v in FIELD_MAP.items() if k in df.columns and v not in df.columns}
+        if rename_dict:
+            df = df.rename(columns=rename_dict)
         return df
 
     def read_backend_data(self, month: str) -> pd.DataFrame:
@@ -96,6 +153,11 @@ class FeishuDataSource:
             df1 = self.read_table('frontend_data_2026_04_p1')
             df2 = self.read_table('frontend_data_2026_04_p2')
             df = pd.concat([df1, df2], ignore_index=True)
+        elif month == '2026-05':
+            # 5月前链路数据超过 20,000 行，拆分为 p1 和 p2 两张表
+            df1 = self.read_table('frontend_data_2026_05_p1')
+            df2 = self.read_table('frontend_data_2026_05_p2')
+            df = pd.concat([df1, df2], ignore_index=True)
         else:
             table_name = f'frontend_data_{month.replace("-", "_")}'
             df = self.read_table(table_name)
@@ -108,3 +170,14 @@ class FeishuDataSource:
     def read_mau_data(self) -> pd.DataFrame:
         """读取月活数据"""
         return self.read_table('mau_data')
+
+    def read_daily_dau(self, month: str = None) -> pd.DataFrame:
+        """读取日活数据（日维度）
+
+        Args:
+            month: 月份，如 '2026-05'。为 None 时返回全部数据。
+        """
+        df = self.read_table('daily_dau')
+        if month and '数据月份' in df.columns:
+            df = df[df['数据月份'] == month]
+        return df

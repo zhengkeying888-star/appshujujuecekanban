@@ -9,9 +9,22 @@ with open(DATA_PATH, 'r', encoding='utf-8') as f:
 
 # Load weekly report data if available
 weekly_data = None
+weekly_top_resource_note = ""
 try:
     with open(WEEKLY_DATA_PATH, 'r', encoding='utf-8') as f:
         weekly_data = json.load(f)
+    top_mover = weekly_data.get('resource_movers', [None])[0] if weekly_data else None
+    if top_mover:
+        tr = top_mover['resource']
+        chg = top_mover['leads_change']
+        if chg > 0:
+            weekly_top_resource_note = f"「{tr}」（上升 +{int(chg):,} 条）"
+        elif chg < 0:
+            weekly_top_resource_note = f"「{tr}」（下降 {int(chg):,} 条）"
+        else:
+            weekly_top_resource_note = f"「{tr}」"
+    else:
+        weekly_top_resource_note = "「Top资源位」"
 except Exception:
     pass
 
@@ -43,6 +56,7 @@ user_journey = data['user_journey']
 
 m3 = ms['2026-03']
 m4 = ms['2026-04']
+m5 = ms.get('2026-05', {})
 
 def fmt_money(n):
     return f"¥{n/10000:.1f}万"
@@ -60,6 +74,14 @@ def mom_sign(v):
 
 # Prepare JSON for JS injection
 raw_data_json = json.dumps(data, ensure_ascii=False)
+weekly_data_json = json.dumps(weekly_data if weekly_data else {}, ensure_ascii=False)
+diagnosis_original_json = json.dumps({
+    'headline': cd['headline'],
+    'subline': cd['subline'],
+    'insight': auto_insight,
+    'negative_pct': cd['negative_pct'],
+    'positive_pct': cd['positive_pct'],
+}, ensure_ascii=False)
 march_funnel_json = json.dumps([
     {'value': user_journey['march']['exposure'], 'name': '曝光 UV'},
     {'value': user_journey['march']['click'], 'name': '点击 UV'},
@@ -74,6 +96,7 @@ april_funnel_json = json.dumps([
 mau_gmv_json = json.dumps([
     {'month': '3月', 'mau': mau_summary.get('2026-03', {}).get('total_mau', 758580), 'gmv': round(m3['gmv']/10000, 1)},
     {'month': '4月', 'mau': mau_summary.get('2026-04', {}).get('total_mau', 702752), 'gmv': round(m4['gmv']/10000, 1)},
+    {'month': '5月', 'mau': mau_summary.get('2026-05', {}).get('total_mau', 504335), 'gmv': round(m5['gmv']/10000, 1)},
 ], ensure_ascii=False)
 factor_impacts_json = json.dumps(factor_impacts, ensure_ascii=False)
 user_journey_json = json.dumps(user_journey, ensure_ascii=False)
@@ -104,14 +127,60 @@ def build_sunburst_data(pb_data, month='april'):
 sunburst_global_json = json.dumps(build_sunburst_data(pbtd, 'april'), ensure_ascii=False)
 
 # Helper to build signal cards HTML
-def build_signal_cards():
+def build_signal_cards_for(view='april'):
     cards = []
-    for sig in cd['signals']:
-        color = 'var(--danger)' if sig['status'] == 'danger' else 'var(--success)'
-        glow = f"box-shadow:0 0 20px {'rgba(239,68,68,0.2)' if sig['status'] == 'danger' else 'rgba(16,185,129,0.2)'}"
-        arrow = '↓' if sig['mom_pct'] < 0 else '↑'
-        badge_class = 'badge-danger' if sig['status'] == 'danger' else 'badge-success'
-        cards.append(f'''<div class="card signal-card animate-in" style="{glow}">
+    if view == 'march':
+        # March absolute values
+        sigs = [
+            {'name': 'GMV', 'value': f"¥{m3['gmv']/10000:.1f}万"},
+            {'name': '月活(MAU)', 'value': f"{mau_summary.get('2026-03', {}).get('total_mau', 0):,}"},
+            {'name': '线索数', 'value': f"{m3['leads']:,}"},
+            {'name': '首单转化率', 'value': f"{m3['cvr_from_leads']:.2f}%"},
+            {'name': 'LTV', 'value': f"¥{m3['arpu']:.1f}"},
+        ]
+        for sig in sigs:
+            cards.append(f'''<div class="card signal-card animate-in">
+      <div class="left-border" style="background:var(--text-tertiary)"></div>
+      <div class="flex justify-between items-center" style="margin-bottom:8px">
+        <span class="metric-name">{sig['name']}</span>
+        <span class="badge badge-info">基准月</span>
+      </div>
+      <div class="metric-value">{sig['value']}</div>
+      <div class="metric-change">3月基准数据</div>
+    </div>''')
+    elif view == 'may':
+        # May vs April
+        mau_mom = round((mau_summary.get('2026-05', {}).get('total_mau', 0) - mau_summary.get('2026-04', {}).get('total_mau', 0)) / mau_summary.get('2026-04', {}).get('total_mau', 1) * 100, 2)
+        sigs = [
+            {'name': 'GMV', 'value': f"¥{m5['gmv']/10000:.1f}万", 'prev': f"¥{m4['gmv']/10000:.1f}万", 'mom': ms['环比_45']['gmv']},
+            {'name': '月活(MAU)', 'value': f"{mau_summary.get('2026-05', {}).get('total_mau', 0):,}", 'prev': f"{mau_summary.get('2026-04', {}).get('total_mau', 0):,}", 'mom': mau_mom},
+            {'name': '线索数', 'value': f"{m5['leads']:,}", 'prev': f"{m4['leads']:,}", 'mom': ms['环比_45']['leads']},
+            {'name': '首单转化率', 'value': f"{m5['cvr_from_leads']:.2f}%", 'prev': f"{m4['cvr_from_leads']:.2f}%", 'mom': ms['环比_45']['cvr_from_leads']},
+            {'name': 'LTV', 'value': f"¥{m5['arpu']:.1f}", 'prev': f"¥{m4['arpu']:.1f}", 'mom': ms['环比_45']['arpu']},
+        ]
+        for sig in sigs:
+            status = 'danger' if sig['mom'] < 0 else 'success'
+            color = 'var(--danger)' if sig['mom'] < 0 else 'var(--success)'
+            glow = f"box-shadow:0 0 20px {'rgba(239,68,68,0.2)' if sig['mom'] < 0 else 'rgba(16,185,129,0.2)'}"
+            arrow = '↓' if sig['mom'] < 0 else '↑'
+            badge_class = 'badge-danger' if sig['mom'] < 0 else 'badge-success'
+            cards.append(f'''<div class="card signal-card animate-in" style="{glow}">
+      <div class="left-border" style="background:{color}"></div>
+      <div class="flex justify-between items-center" style="margin-bottom:8px">
+        <span class="metric-name">{sig['name']}</span>
+        <span class="badge {badge_class}">{arrow} {abs(sig['mom']):.1f}%</span>
+      </div>
+      <div class="metric-value">{sig['value']}</div>
+      <div class="metric-change">vs 4月: {sig['prev']} → {sig['value']}</div>
+    </div>''')
+    else:
+        # April vs March (default / compare)
+        for sig in cd['signals']:
+            color = 'var(--danger)' if sig['status'] == 'danger' else 'var(--success)'
+            glow = f"box-shadow:0 0 20px {'rgba(239,68,68,0.2)' if sig['status'] == 'danger' else 'rgba(16,185,129,0.2)'}"
+            arrow = '↓' if sig['mom_pct'] < 0 else '↑'
+            badge_class = 'badge-danger' if sig['status'] == 'danger' else 'badge-success'
+            cards.append(f'''<div class="card signal-card animate-in" style="{glow}">
       <div class="left-border" style="background:{color}"></div>
       <div class="flex justify-between items-center" style="margin-bottom:8px">
         <span class="metric-name">{sig['name']}</span>
@@ -122,49 +191,91 @@ def build_signal_cards():
     </div>''')
     return '\n'.join(cards)
 
-# Build diagnosis cards for screen 2
-diagnosis_sorted = sorted(cc, key=lambda x: x['mom'])
-def build_diagnosis_cards():
+def build_signal_cards():
+    return build_signal_cards_for('april')
+
+# Build diagnosis cards for screen 2 (支持多月份动态切换)
+diagnosis_sorted = sorted(cc, key=lambda x: x.get('mom_34', x.get('mom', 0)))
+def build_diagnosis_cards_for(view='april'):
     cards = []
-    for d_item in diagnosis_sorted[:3]:
-        status_color = 'var(--danger)' if d_item['mom'] < 0 else 'var(--success)'
-        arrow = '↓' if d_item['mom'] < 0 else '↑'
-        cards.append(f'''<div class="card animate-in" style="border-left:3px solid {status_color}">
+    items = diagnosis_sorted[:3]
+    for d_item in items:
+        if view == 'march':
+            val = d_item.get('march', 0)
+            cards.append(f'''<div class="card animate-in" style="border-left:3px solid var(--text-tertiary)">
+      <div class="flex justify-between items-center" style="margin-bottom:8px">
+        <span style="font-size:16px;font-weight:700">{d_item['metric']}</span>
+        <span class="badge badge-info">{d_item.get('owner','运营')}</span>
+      </div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px">{val}%</div>
+      <div style="font-size:14px;color:var(--text-secondary)">3月基准数据</div>
+    </div>''')
+        elif view == 'may':
+            prev_val = d_item.get('april', 0)
+            cur_val = d_item.get('may', 0)
+            mom_val = d_item.get('mom_45', 0)
+            status_color = 'var(--danger)' if mom_val < 0 else 'var(--success)'
+            arrow = '↓' if mom_val < 0 else '↑'
+            cards.append(f'''<div class="card animate-in" style="border-left:3px solid {status_color}">
       <div class="flex justify-between items-center" style="margin-bottom:8px">
         <span style="font-size:16px;font-weight:700">{d_item['metric']}</span>
         <span class="badge badge-info">{d_item.get('owner','运营')}</span>
       </div>
       <div style="font-size:20px;font-weight:700;margin-bottom:4px">
-        {d_item['march']}% <span style="color:var(--text-tertiary)">→</span> {d_item['april']}% <span style="color:{status_color}">{arrow}{abs(d_item['mom']):.1f}%</span>
+        {prev_val}% <span style="color:var(--text-tertiary)">→</span> {cur_val}% <span style="color:{status_color}">{arrow}{abs(mom_val):.1f}%</span>
+      </div>
+      <div style="font-size:14px;color:var(--text-secondary)">{d_item.get('issue','')}</div>
+    </div>''')
+        else:
+            # april / compare
+            mom_val = d_item.get('mom_34', d_item.get('mom', 0))
+            status_color = 'var(--danger)' if mom_val < 0 else 'var(--success)'
+            arrow = '↓' if mom_val < 0 else '↑'
+            cards.append(f'''<div class="card animate-in" style="border-left:3px solid {status_color}">
+      <div class="flex justify-between items-center" style="margin-bottom:8px">
+        <span style="font-size:16px;font-weight:700">{d_item['metric']}</span>
+        <span class="badge badge-info">{d_item.get('owner','运营')}</span>
+      </div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px">
+        {d_item['march']}% <span style="color:var(--text-tertiary)">→</span> {d_item['april']}% <span style="color:{status_color}">{arrow}{abs(mom_val):.1f}%</span>
       </div>
       <div style="font-size:14px;color:var(--text-secondary)">{d_item.get('issue','')}</div>
     </div>''')
     return '\n'.join(cards)
 
-# Build resource ranking table
-re_top = sorted(re_list, key=lambda x: x['2026-04']['leads'], reverse=True)[:10]
-def build_resource_table():
+def build_diagnosis_cards():
+    return build_diagnosis_cards_for('april')
+
+# Build resource ranking table（支持多月份动态切换）
+def build_resource_table_for(view='april'):
+    month_key = '2026-03' if view == 'march' else ('2026-05' if view == 'may' else '2026-04')
+    mom_key = '环比_34' if view == 'march' else ('环比_45' if view == 'may' else '环比_34')
+    prev_key = '2026-03' if view == 'may' else '2026-03'
+    re_sorted = sorted(re_list, key=lambda x: x[month_key]['leads'], reverse=True)[:10]
     rows = []
-    for idx, r in enumerate(re_top, 1):
-        m4 = r['2026-04']
-        mom = r['环比']
-        gmv_mom = mom['gmv']
+    for idx, r in enumerate(re_sorted, 1):
+        m = r[month_key]
+        mom = r.get(mom_key, r.get('环比', {}))
+        gmv_mom = mom.get('gmv', 0)
         row_class = 'growth' if gmv_mom > 0 else 'decline'
         arrow = '↑' if gmv_mom > 0 else '↓'
         color = 'text-success' if gmv_mom > 0 else 'text-danger'
-        gpe = m4.get('gmv_per_exposure', 0)
-        gpc = m4.get('gmv_per_click', 0)
+        gpe = m.get('gmv_per_exposure', 0)
+        gpc = m.get('gmv_per_click', 0)
         rows.append(f'''<tr class="{row_class}" data-resource="{r['resource']}">
               <td style="font-weight:700;color:var(--text-tertiary)">#{idx}</td>
               <td>{r['resource']}</td>
-              <td>{fmt_int(m4['leads'])}</td>
-              <td>{fmt_pct(m4['lead_rate'])}</td>
-              <td>{fmt_pct(m4['order_rate'])}</td>
+              <td>{fmt_int(m['leads'])}</td>
+              <td>{fmt_pct(m['lead_rate'])}</td>
+              <td>{fmt_pct(m['order_rate'])}</td>
               <td>¥{gpe:.2f}</td>
               <td>¥{gpc:.2f}</td>
-              <td>{fmt_money(m4['gmv'])} <span class="{color}">{arrow}{abs(gmv_mom):.0f}%</span></td>
+              <td>{fmt_money(m['gmv'])} <span class="{color}">{arrow}{abs(gmv_mom):.0f}%</span></td>
             </tr>''')
     return '\n'.join(rows)
+
+def build_resource_table():
+    return build_resource_table_for('april')
 
 # Build strategy cards
 def build_strategy_cards():
@@ -361,39 +472,55 @@ def build_weekly_kpi_cards():
     cur = weekly_data['summary']['current']
     mom = weekly_data['summary']['mom']
     cards = []
-    # 线索数
+    # 线索数（后端）
     leads_color = 'var(--success)' if mom['leads'] >= 0 else 'var(--danger)'
     leads_arrow = '↑' if mom['leads'] >= 0 else '↓'
     cards.append(f'''<div class="card animate-in">
       <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">线索数 (MTD)</div>
-      <div style="font-size:28px;font-weight:700">{int(cur['leads']):,}</div>
+      <div style="font-size:28px;font-weight:700">{int(cur['leads_backend']):,}</div>
       <div style="font-size:13px;color:{leads_color};margin-top:4px">{leads_arrow} {abs(mom['leads']):.2f}% vs 上月同期</div>
       <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px">目标: {int(cur['leads_goal']):,} | 差距: {cur['leads_gap']:+}</div>
     </div>''')
-    # GMV
-    gmv_color = 'var(--success)' if mom['gmv'] >= 0 else 'var(--danger)'
-    gmv_arrow = '↑' if mom['gmv'] >= 0 else '↓'
+    # 曝光UV
+    exp_color = 'var(--success)' if mom['exposure'] >= 0 else 'var(--danger)'
+    exp_arrow = '↑' if mom['exposure'] >= 0 else '↓'
     cards.append(f'''<div class="card animate-in">
-      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">GMV (MTD)</div>
-      <div style="font-size:28px;font-weight:700">¥{cur['gmv']/10000:.1f}万</div>
-      <div style="font-size:13px;color:{gmv_color};margin-top:4px">{gmv_arrow} {abs(mom['gmv']):.2f}% vs 上月同期</div>
-      <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px">目标: ¥{cur['gmv_goal']/10000:.1f}万 | 差距: ¥{cur['gmv_gap']/10000:.1f}万</div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">曝光 UV</div>
+      <div style="font-size:28px;font-weight:700">{int(cur['exposure']):,}</div>
+      <div style="font-size:13px;color:{exp_color};margin-top:4px">{exp_arrow} {abs(mom['exposure']):.2f}% vs 上月同期</div>
     </div>''')
-    # CVR
-    cvr_color = 'var(--success)' if mom['cvr'] >= 0 else 'var(--danger)'
-    cvr_arrow = '↑' if mom['cvr'] >= 0 else '↓'
+    # 点击UV
+    click_color = 'var(--success)' if mom['click'] >= 0 else 'var(--danger)'
+    click_arrow = '↑' if mom['click'] >= 0 else '↓'
     cards.append(f'''<div class="card animate-in">
-      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">转化率 (CVR)</div>
-      <div style="font-size:28px;font-weight:700">{cur['cvr']}%</div>
-      <div style="font-size:13px;color:{cvr_color};margin-top:4px">{cvr_arrow} {abs(mom['cvr']):.2f}pp vs 上月同期</div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">点击 UV</div>
+      <div style="font-size:28px;font-weight:700">{int(cur['click']):,}</div>
+      <div style="font-size:13px;color:{click_color};margin-top:4px">{click_arrow} {abs(mom['click']):.2f}% vs 上月同期</div>
+    </div>''')
+    # CTR
+    ctr_color = 'var(--success)' if mom['ctr'] >= 0 else 'var(--danger)'
+    ctr_arrow = '↑' if mom['ctr'] >= 0 else '↓'
+    cards.append(f'''<div class="card animate-in">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">CTR（点击率）</div>
+      <div style="font-size:28px;font-weight:700">{cur['ctr']}%</div>
+      <div style="font-size:13px;color:{ctr_color};margin-top:4px">{ctr_arrow} {abs(mom['ctr']):.2f}pp vs 上月同期</div>
     </div>''')
     # 线索生成率
-    lgr_color = 'var(--success)' if mom['lead_gen_rate'] >= 0 else 'var(--danger)'
-    lgr_arrow = '↑' if mom['lead_gen_rate'] >= 0 else '↓'
+    lgr_color = 'var(--success)' if mom['lead_rate'] >= 0 else 'var(--danger)'
+    lgr_arrow = '↑' if mom['lead_rate'] >= 0 else '↓'
     cards.append(f'''<div class="card animate-in">
       <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">线索生成率</div>
-      <div style="font-size:28px;font-weight:700">{cur['lead_gen_rate']}%</div>
-      <div style="font-size:13px;color:{lgr_color};margin-top:4px">{lgr_arrow} {abs(mom['lead_gen_rate']):.2f}pp vs 上月同期</div>
+      <div style="font-size:28px;font-weight:700">{cur['lead_rate']}%</div>
+      <div style="font-size:13px;color:{lgr_color};margin-top:4px">{lgr_arrow} {abs(mom['lead_rate']):.2f}pp vs 上月同期</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px">线索 / 曝光UV</div>
+    </div>''')
+    # MAU
+    mau_color = 'var(--success)' if mom.get('mau', 0) >= 0 else 'var(--danger)'
+    mau_arrow = '↑' if mom.get('mau', 0) >= 0 else '↓'
+    cards.append(f'''<div class="card animate-in">
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">月活 (MAU)</div>
+      <div style="font-size:28px;font-weight:700">{int(cur.get('mau', 0)):,}</div>
+      <div style="font-size:13px;color:{mau_color};margin-top:4px">{mau_arrow} {abs(mom.get('mau', 0)):.2f}% vs 上月</div>
     </div>''')
     return '\n'.join(cards)
 
@@ -405,13 +532,17 @@ def build_weekly_movers_table():
     for m in movers[:5]:
         change_color = 'text-success' if m['leads_change'] >= 0 else 'text-danger'
         change_arrow = '↑' if m['leads_change'] >= 0 else '↓'
+        ctr_change = m['ctr_cur'] - m['ctr_prev']
+        lr_change = m['lead_rate_cur'] - m['lead_rate_prev']
+        ctr_color = 'text-success' if ctr_change >= 0 else 'text-danger'
+        lr_color = 'text-success' if lr_change >= 0 else 'text-danger'
         rows.append(f'''<tr>
           <td><strong>{m['resource']}</strong></td>
           <td>{int(m['leads_cur']):,}</td>
           <td>{int(m['leads_prev']):,}</td>
           <td class="{change_color}">{change_arrow} {abs(m['leads_change']):,}</td>
-          <td>{m['cvr_cur']:.2f}%</td>
-          <td>{m['cvr_prev']:.2f}%</td>
+          <td class="{ctr_color}">{'↑' if ctr_change >= 0 else '↓'} {abs(ctr_change):.2f}pp</td>
+          <td class="{lr_color}">{'↑' if lr_change >= 0 else '↓'} {abs(lr_change):.2f}pp</td>
         </tr>''')
     return '\n'.join(rows)
 
@@ -437,9 +568,28 @@ def build_weekly_category_table():
         rows.append(f'''<tr>
           <td>{c['category']}</td>
           <td>{int(c['leads']):,}</td>
-          <td>{c['cvr']:.2f}%</td>
-          <td>¥{c['gmv']/10000:.1f}万</td>
+          <td>{c['ctr']:.2f}%</td>
+          <td>{c['lead_rate']:.2f}%</td>
           <td>{mom_str}</td>
+        </tr>''')
+    return '\n'.join(rows)
+
+def build_weekly_category_movers_table():
+    if not weekly_data:
+        return ''
+    cat_movers = weekly_data.get('category_movers', [])
+    if not cat_movers:
+        return '<p style="color:var(--text-tertiary)">无品类变化数据</p>'
+    rows = []
+    for c in cat_movers:
+        color = 'text-success' if c['direction'] == 'up' else 'text-danger'
+        arrow = '↑' if c['direction'] == 'up' else '↓'
+        rows.append(f'''<tr>
+          <td><strong>{c['category']}</strong></td>
+          <td>{int(c['leads_cur']):,}</td>
+          <td>{int(c['leads_prev']):,}</td>
+          <td class="{color}">{arrow} {abs(int(c['leads_change'])):,}</td>
+          <td>{c['leads_mom']:.1f}%</td>
         </tr>''')
     return '\n'.join(rows)
 
@@ -462,42 +612,105 @@ def build_weekly_priceband_table():
             mom_color = 'var(--success)' if mom_pct >= 0 else 'var(--danger)'
             mom_arrow = '↑' if mom_pct >= 0 else '↓'
             mom_str = f'<span style="color:{mom_color};font-size:11px">{mom_arrow}{abs(mom_pct):.1f}%</span>'
-        cvr_val = c.get('cvr', 0)
-        gmv_val = c.get('gmv', 0)
-        cvr_str = f'{cvr_val:.2f}%' if cvr_val else '-'
-        gmv_str = f'¥{gmv_val/10000:.1f}万' if gmv_val else '-'
         rows.append(f'''<tr>
           <td>{c['price_band']}</td>
           <td>{int(c['leads']):,}</td>
-          <td>{cvr_str}</td>
-          <td>{gmv_str}</td>
+          <td>{int(c['exposure']):,}</td>
           <td>{mom_str}</td>
+        </tr>''')
+    return '\n'.join(rows)
+
+def build_weekly_gainers_table():
+    if not weekly_data:
+        return ''
+    gainers = weekly_data.get('top_gainers', [])
+    rows = []
+    for idx, m in enumerate(gainers[:3], 1):
+        ctr_chg = m['ctr_cur'] - m['ctr_prev']
+        lr_chg = m['lead_rate_cur'] - m['lead_rate_prev']
+        ctr_color = 'text-success' if ctr_chg >= 0 else 'text-danger'
+        lr_color = 'text-success' if lr_chg >= 0 else 'text-danger'
+        rows.append(f'''<tr>
+          <td>{idx}</td>
+          <td><strong>{m['resource']}</strong></td>
+          <td>{int(m['leads_cur']):,}</td>
+          <td>{int(m['leads_prev']):,}</td>
+          <td class="text-success">↑ {abs(int(m['leads_change'])):,}</td>
+          <td class="{ctr_color}">{'↑' if ctr_chg >= 0 else '↓'} {abs(ctr_chg):.2f}pp</td>
+          <td class="{lr_color}">{'↑' if lr_chg >= 0 else '↓'} {abs(lr_chg):.2f}pp</td>
+        </tr>''')
+    return '\n'.join(rows)
+
+def build_weekly_losers_table():
+    if not weekly_data:
+        return ''
+    losers = weekly_data.get('top_losers', [])
+    rows = []
+    for idx, m in enumerate(losers[:3], 1):
+        ctr_chg = m['ctr_cur'] - m['ctr_prev']
+        lr_chg = m['lead_rate_cur'] - m['lead_rate_prev']
+        ctr_color = 'text-success' if ctr_chg >= 0 else 'text-danger'
+        lr_color = 'text-success' if lr_chg >= 0 else 'text-danger'
+        rows.append(f'''<tr>
+          <td>{idx}</td>
+          <td><strong>{m['resource']}</strong></td>
+          <td>{int(m['leads_cur']):,}</td>
+          <td>{int(m['leads_prev']):,}</td>
+          <td class="text-danger">↓ {abs(int(m['leads_change'])):,}</td>
+          <td class="{ctr_color}">{'↑' if ctr_chg >= 0 else '↓'} {abs(ctr_chg):.2f}pp</td>
+          <td class="{lr_color}">{'↑' if lr_chg >= 0 else '↓'} {abs(lr_chg):.2f}pp</td>
+        </tr>''')
+    return '\n'.join(rows)
+
+def build_weekly_efficiency_table():
+    if not weekly_data:
+        return ''
+    trends = weekly_data.get('resource_efficiency_trends', [])
+    trends = [r for r in trends if r.get('ctr_cur', 0) > 0 or r.get('ctr_prev', 0) > 0]
+    if not trends:
+        return '<p style="color:var(--text-tertiary)">无效率趋势数据</p>'
+    rows = []
+    for r in sorted(trends, key=lambda x: x['ctr_change'], reverse=True):
+        ctr_chg = r['ctr_change']
+        lr_chg = r['lead_rate_change']
+        ctr_color = 'text-success' if ctr_chg >= 0 else 'text-danger'
+        lr_color = 'text-success' if lr_chg >= 0 else 'text-danger'
+        rows.append(f'''<tr>
+          <td><strong>{r['resource']}</strong></td>
+          <td>{r['ctr_cur']:.2f}%</td>
+          <td>{r['ctr_prev']:.2f}%</td>
+          <td class="{ctr_color}">{'↑' if ctr_chg >= 0 else '↓'} {abs(ctr_chg):.2f}pp</td>
+          <td>{r['lead_rate_cur']:.2f}%</td>
+          <td>{r['lead_rate_prev']:.2f}%</td>
+          <td class="{lr_color}">{'↑' if lr_chg >= 0 else '↓'} {abs(lr_chg):.2f}pp</td>
         </tr>''')
     return '\n'.join(rows)
 
 def build_weekly_insights():
     if not weekly_data:
         return '暂无周报数据'
-    movers = weekly_data.get('resource_movers', [])
-    if not movers:
-        return '暂无资源位变动数据'
-    top_gainer = max(movers, key=lambda x: x['leads_change'])
-    top_loser = min(movers, key=lambda x: x['leads_change'])
+    gainers = weekly_data.get('top_gainers', [])
+    losers = weekly_data.get('top_losers', [])
+    cat_gainers = [c for c in weekly_data.get('category_movers', []) if c['direction'] == 'up']
+    cat_losers = [c for c in weekly_data.get('category_movers', []) if c['direction'] == 'down']
     cur = weekly_data['summary']['current']
     mom = weekly_data['summary']['mom']
     lines = []
-    lines.append(f'• 线索数 MTD 为 {int(cur["leads"]):,}，{"高于" if mom["leads"] >= 0 else "低于"}上月同期 {abs(mom["leads"]):.2f}%。')
-    lines.append(f'• GMV MTD 为 ¥{cur["gmv"]/10000:.1f}万，{"高于" if mom["gmv"] >= 0 else "低于"}上月同期 {abs(mom["gmv"]):.2f}%。')
-    lines.append(f'• 资源位变动最大增长：{top_gainer["resource"]}（{top_gainer["leads_change"]:+} 条线索）。')
-    if top_loser['leads_change'] < 0:
-        lines.append(f'• 资源位变动最大下降：{top_loser["resource"]}（{top_loser["leads_change"]} 条线索），需重点关注。')
-    gap_text = ''
-    if cur.get('leads_gap', 0) != 0:
-        gap_text += f'线索差距 {cur["leads_gap"]:+} 条；'
-    if cur.get('gmv_gap', 0) != 0:
-        gap_text += f'GMV 差距 ¥{cur["gmv_gap"]/10000:.1f}万。'
-    if gap_text:
-        lines.append(f'• 月度目标进度：{gap_text}')
+    lines.append(f'<div style="font-size:15px;font-weight:600;margin-bottom:12px">增长驱动</div>')
+    if gainers:
+        lines.append(f'• 资源位：<strong>{gainers[0]["resource"]}</strong> 线索增长最多（+{int(gainers[0]["leads_change"]):,} 条，↑{gainers[0]["leads_mom"]:.1f}%）。')
+    if cat_gainers:
+        lines.append(f'• 品类：<strong>{cat_gainers[0]["category"]}</strong> 增长显著（+{int(cat_gainers[0]["leads_change"]):,} 条，↑{cat_gainers[0]["leads_mom"]:.1f}%）。')
+    lines.append(f'<div style="font-size:15px;font-weight:600;margin:16px 0 12px">下降拖累</div>')
+    if losers:
+        lines.append(f'• 资源位：<strong>{losers[0]["resource"]}</strong> 线索下滑最严重（{int(losers[0]["leads_change"]):,} 条，↓{abs(losers[0]["leads_mom"]):.1f}%）。')
+    if cat_losers:
+        lines.append(f'• 品类：<strong>{cat_losers[0]["category"]}</strong> 出现明显下滑（{int(cat_losers[0]["leads_change"]):,} 条，↓{abs(cat_losers[0]["leads_mom"]):.1f}%）。')
+    lines.append(f'<div style="font-size:15px;font-weight:600;margin:16px 0 12px">下一步策略</div>')
+    lines.append(f'1. <strong>目标追赶</strong>：当前线索缺口 {cur["leads_gap"]:+}，需加大高转化资源位投放。')
+    lines.append(f'2. <strong>CTR 优化</strong>：迭代低 CTR 资源位素材，提升点击吸引力。')
+    lines.append(f'3. <strong>线索生成率修复</strong>：优化落地页体验和价格带结构。')
+    lines.append(f'4. <strong>资源位调配</strong>：加推增长显著资源位，减少低效预算。')
     return '<br>'.join(lines)
 
 # Build HTML
@@ -630,8 +843,9 @@ a{{text-decoration:none;color:inherit}}
   <div class="nav-tabs">
     <button type="button" class="nav-tab active" onclick="setView('march', this)">3月</button>
     <button type="button" class="nav-tab" onclick="setView('april', this)">4月</button>
+    <button type="button" class="nav-tab" onclick="setView('may', this)">5月</button>
     <button type="button" class="nav-tab" onclick="setView('compare', this)">对比分析</button>
-    <button type="button" class="nav-tab" onclick="setView('weekly', this)">周视图</button>
+    <button type="button" class="nav-tab" onclick="setView('weekly', this)">周报</button>
   </div>
   <button type="button" class="btn-primary" onclick="exportReport(this)">
     <span class="material-symbols-outlined" style="font-size:16px">download</span>
@@ -646,23 +860,32 @@ a{{text-decoration:none;color:inherit}}
   <div class="screen-title">1. 诊断结论</div>
   <div class="card hero-card animate-in" style="margin-bottom:20px">
     <div class="hero-label">诊断结论</div>
-    <div class="hero-title">{cd['headline']}</div>
-    <div class="hero-sub">{cd['subline']}</div>
-    <div style="margin-top:12px;padding:10px 14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.15);border-radius:8px;font-size:14px;color:var(--accent-primary);display:flex;align-items:center;gap:6px">
+    <div class="hero-title" id="hero-title">{cd['headline']}</div>
+    <div class="hero-sub" id="hero-sub">{cd['subline']}</div>
+    <div id="hero-insight" style="margin-top:12px;padding:10px 14px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.15);border-radius:8px;font-size:14px;color:var(--accent-primary);display:flex;align-items:center;gap:6px">
       <span class="material-symbols-outlined" style="font-size:18px">lightbulb</span>
       <span>{auto_insight}</span>
     </div>
-    <div class="progress-bar">
+    <div class="progress-bar" id="hero-progress">
       <div class="red" style="width:{cd['negative_pct']}%"></div>
       <div class="green" style="width:{cd['positive_pct']}%"></div>
     </div>
-    <div class="progress-labels">
+    <div class="progress-labels" id="hero-progress-labels">
       <span>负向驱动因素 ({cd['negative_pct']}%)</span>
       <span>正向抵消因素 ({cd['positive_pct']}%)</span>
     </div>
   </div>
-  <div class="grid-5" style="margin-bottom:20px">
-    {build_signal_cards()}
+  <div class="grid-5 signal-view" data-view="march" style="margin-bottom:20px;display:none">
+    {build_signal_cards_for('march')}
+  </div>
+  <div class="grid-5 signal-view" data-view="april" style="margin-bottom:20px">
+    {build_signal_cards_for('april')}
+  </div>
+  <div class="grid-5 signal-view" data-view="may" style="margin-bottom:20px;display:none">
+    {build_signal_cards_for('may')}
+  </div>
+  <div class="grid-5 signal-view" data-view="compare" style="margin-bottom:20px;display:none">
+    {build_signal_cards_for('april')}
   </div>
   <div class="grid-2" style="margin-bottom:20px">
     <div class="card animate-in">
@@ -720,7 +943,7 @@ a{{text-decoration:none;color:inherit}}
             <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:10px;padding:10px 4px">
               <div style="font-size:14px;font-weight:700;color:var(--accent-primary)">{user_journey['april']['friend_rate']:.1f}%</div>
               <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">3月 {user_journey['march']['friend_rate']:.1f}%</div>
-              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom']['friend_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom']['friend_rate'] < 0 else '↑'}{abs(user_journey['mom']['friend_rate']):.1f}%</div>
+              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom_45']['friend_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom_45']['friend_rate'] < 0 else '↑'}{abs(user_journey['mom_45']['friend_rate']):.1f}%</div>
               <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">好友</div>
               <div style="font-size:12px;color:var(--text-primary);margin-top:2px">{fmt_int(user_journey['april']['friend'])}</div>
             </div>
@@ -730,7 +953,7 @@ a{{text-decoration:none;color:inherit}}
             <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:10px;padding:10px 4px">
               <div style="font-size:14px;font-weight:700;color:var(--accent-primary)">{user_journey['april']['attend_rate']:.1f}%</div>
               <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">3月 {user_journey['march']['attend_rate']:.1f}%</div>
-              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom']['attend_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom']['attend_rate'] < 0 else '↑'}{abs(user_journey['mom']['attend_rate']):.1f}%</div>
+              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom_45']['attend_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom_45']['attend_rate'] < 0 else '↑'}{abs(user_journey['mom_45']['attend_rate']):.1f}%</div>
               <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">到课</div>
               <div style="font-size:12px;color:var(--text-primary);margin-top:2px">{fmt_int(user_journey['april']['attend'])}</div>
             </div>
@@ -740,7 +963,7 @@ a{{text-decoration:none;color:inherit}}
             <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:10px;padding:10px 4px">
               <div style="font-size:14px;font-weight:700;color:var(--accent-primary)">{user_journey['april']['complete_rate']:.1f}%</div>
               <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">3月 {user_journey['march']['complete_rate']:.1f}%</div>
-              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom']['complete_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom']['complete_rate'] < 0 else '↑'}{abs(user_journey['mom']['complete_rate']):.1f}%</div>
+              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom_45']['complete_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom_45']['complete_rate'] < 0 else '↑'}{abs(user_journey['mom_45']['complete_rate']):.1f}%</div>
               <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">完课</div>
               <div style="font-size:12px;color:var(--text-primary);margin-top:2px">{fmt_int(user_journey['april']['complete'])}</div>
             </div>
@@ -750,7 +973,7 @@ a{{text-decoration:none;color:inherit}}
             <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:10px;padding:10px 4px">
               <div style="font-size:14px;font-weight:700;color:var(--accent-primary)">{user_journey['april']['order_rate']:.1f}%</div>
               <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">3月 {user_journey['march']['order_rate']:.1f}%</div>
-              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom']['order_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom']['order_rate'] < 0 else '↑'}{abs(user_journey['mom']['order_rate']):.1f}%</div>
+              <div style="font-size:11px;color:var(--{'danger' if user_journey['mom_45']['order_rate'] < 0 else 'success'});margin-top:2px">{'↓' if user_journey['mom_45']['order_rate'] < 0 else '↑'}{abs(user_journey['mom_45']['order_rate']):.1f}%</div>
               <div style="font-size:11px;color:var(--text-secondary);margin-top:4px">首单</div>
               <div style="font-size:12px;color:var(--text-primary);margin-top:2px">{fmt_int(user_journey['april']['order'])}</div>
             </div>
@@ -770,8 +993,17 @@ a{{text-decoration:none;color:inherit}}
       </div>
     </div>
   </div>
-  <div class="grid-3">
-    {build_diagnosis_cards()}
+  <div class="grid-3 diagnosis-view" data-view="march" style="display:none">
+    {build_diagnosis_cards_for('march')}
+  </div>
+  <div class="grid-3 diagnosis-view" data-view="april">
+    {build_diagnosis_cards_for('april')}
+  </div>
+  <div class="grid-3 diagnosis-view" data-view="may" style="display:none">
+    {build_diagnosis_cards_for('may')}
+  </div>
+  <div class="grid-3 diagnosis-view" data-view="compare" style="display:none">
+    {build_diagnosis_cards_for('april')}
   </div>
 </div>
 
@@ -788,7 +1020,7 @@ a{{text-decoration:none;color:inherit}}
   <div class="card animate-in" style="margin-bottom:20px">
     <div class="section-title">
       <span class="material-symbols-outlined">waterfall_chart</span>
-      资源位 GMV 瀑布图（3月 → 4月变化量）
+      资源位 GMV 瀑布图（<span id="waterfall-title">3月 → 4月变化量</span>）
     </div>
     <div id="resource-gmv-waterfall-chart" style="width:100%;height:280px"></div>
   </div>
@@ -812,8 +1044,17 @@ a{{text-decoration:none;color:inherit}}
               <th>排名</th><th>资源位</th><th>线索数</th><th>线索生成率</th><th>首单转化率</th><th>单曝光产出</th><th>单点击产出</th><th>GMV</th>
             </tr>
           </thead>
-          <tbody>
-            {build_resource_table()}
+          <tbody class="resource-table-view" data-view="march" style="display:none">
+            {build_resource_table_for('march')}
+          </tbody>
+          <tbody class="resource-table-view" data-view="april">
+            {build_resource_table_for('april')}
+          </tbody>
+          <tbody class="resource-table-view" data-view="may" style="display:none">
+            {build_resource_table_for('may')}
+          </tbody>
+          <tbody class="resource-table-view" data-view="compare" style="display:none">
+            {build_resource_table_for('april')}
           </tbody>
         </table>
       </div>
@@ -922,23 +1163,31 @@ a{{text-decoration:none;color:inherit}}
 
 <!-- Screen Weekly -->
 <div class="screen" id="screen-weekly" style="display:none">
-  <div class="screen-title">周视图 · {weekly_data['meta']['current_month'] if weekly_data else '月度进度'} MTD 周报</div>
+  <div class="screen-title">周报 · {weekly_data['meta']['current_month'] if weekly_data else '月度进度'} MTD 进度</div>
   <div class="grid-4" style="margin-bottom:20px">
     {build_weekly_kpi_cards()}
+  </div>
+  <div class="card animate-in" style="margin-bottom:20px">
+    <div class="section-title">
+      <span class="material-symbols-outlined">show_chart</span>
+      日度线索趋势（同期对比）
+    </div>
+    <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px">左轴：线索数 | 右轴：线索生成率（线索/日活）</div>
+    <div id="weekly-daily-trend-chart" style="width:100%;height:360px"></div>
   </div>
   <div class="grid-2" style="margin-bottom:20px">
     <div class="card animate-in">
       <div class="section-title">
         <span class="material-symbols-outlined">trending_up</span>
-        资源位线索变化 Top5
+        资源位上升 Top 3
       </div>
       <div style="overflow-x:auto">
         <table class="data-table">
           <thead>
-            <tr><th>资源位</th><th>本月线索</th><th>上月同期</th><th>变化</th><th>本月CVR</th><th>上月CVR</th></tr>
+            <tr><th>排名</th><th>资源位</th><th>本月线索</th><th>上月同期</th><th>变化</th><th>CTR变化</th><th>线索生成率变化</th></tr>
           </thead>
           <tbody>
-            {build_weekly_movers_table()}
+            {build_weekly_gainers_table()}
           </tbody>
         </table>
       </div>
@@ -946,10 +1195,17 @@ a{{text-decoration:none;color:inherit}}
     <div class="card animate-in">
       <div class="section-title">
         <span class="material-symbols-outlined">trending_down</span>
-        核心问题与下一步动作
+        资源位下降 Top 3
       </div>
-      <div style="font-size:14px;color:var(--text-secondary);line-height:1.8">
-        {build_weekly_insights()}
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead>
+            <tr><th>排名</th><th>资源位</th><th>本月线索</th><th>上月同期</th><th>变化</th><th>CTR变化</th><th>线索生成率变化</th></tr>
+          </thead>
+          <tbody>
+            {build_weekly_losers_table()}
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -957,12 +1213,58 @@ a{{text-decoration:none;color:inherit}}
     <div class="card animate-in">
       <div class="section-title">
         <span class="material-symbols-outlined">category</span>
-        「{weekly_data.get('resource_movers', [{}])[0].get('resource', 'Top资源位') if weekly_data else 'Top资源位'}」品类线索分布
+        品类线索变化 Top5
       </div>
       <div style="overflow-x:auto">
         <table class="data-table">
           <thead>
-            <tr><th>品类</th><th>线索数</th><th>转化率</th><th>GMV</th><th>环比</th></tr>
+            <tr><th>品类</th><th>本月线索</th><th>上月同期</th><th>变化</th><th>环比</th></tr>
+          </thead>
+          <tbody>
+            {build_weekly_category_movers_table()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card animate-in">
+      <div class="section-title">
+        <span class="material-symbols-outlined">speed</span>
+        资源位效率趋势
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead>
+            <tr><th>资源位</th><th>本月CTR</th><th>上月CTR</th><th>CTR变化</th><th>本月线索生成率</th><th>上月线索生成率</th><th>线索生成率变化</th></tr>
+          </thead>
+          <tbody>
+            {build_weekly_efficiency_table()}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card animate-in" style="margin-bottom:20px">
+    <div class="section-title">
+      <span class="material-symbols-outlined">lightbulb</span>
+      原因（双向归因）与下一步策略
+    </div>
+    <div style="font-size:14px;color:var(--text-secondary);line-height:1.8">
+      {build_weekly_insights()}
+    </div>
+  </div>
+  <div class="grid-2" style="margin-bottom:20px">
+    <div class="card animate-in">
+      <div class="section-title">
+        <span class="material-symbols-outlined">category</span>
+        Top 资源位品类下钻
+      </div>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px">
+        以下以本月线索变化最大的资源位{weekly_top_resource_note}为例
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead>
+            <tr><th>品类</th><th>线索数</th><th>CTR</th><th>线索生成率</th><th>环比</th></tr>
           </thead>
           <tbody>
             {build_weekly_category_table()}
@@ -973,12 +1275,12 @@ a{{text-decoration:none;color:inherit}}
     <div class="card animate-in">
       <div class="section-title">
         <span class="material-symbols-outlined">payments</span>
-        「{weekly_data.get('resource_movers', [{}])[0].get('resource', 'Top资源位') if weekly_data else 'Top资源位'}」价格带线索分布
+        价格带结构
       </div>
       <div style="overflow-x:auto">
         <table class="data-table">
           <thead>
-            <tr><th>价格带</th><th>线索数</th><th>转化率</th><th>GMV</th><th>环比</th></tr>
+            <tr><th>价格带</th><th>线索数</th><th>曝光UV</th><th>环比</th></tr>
           </thead>
           <tbody>
             {build_weekly_priceband_table()}
@@ -995,6 +1297,8 @@ a{{text-decoration:none;color:inherit}}
 
 <script>
 const RAW_DATA = {raw_data_json};
+const WEEKLY_DATA = {weekly_data_json};
+const DIAGNOSIS_ORIGINAL = {diagnosis_original_json};
 let currentMonth = 'march';
 let currentView = 'monthly';
 
@@ -1012,6 +1316,7 @@ function setView(view, el) {{
       if (s) s.style.display = 'none';
     }});
     if (weeklyScreen) weeklyScreen.style.display = 'block';
+    renderWeeklyCharts();
   }} else {{
     currentView = 'monthly';
     currentMonth = view;
@@ -1020,20 +1325,90 @@ function setView(view, el) {{
       const s = document.getElementById(id);
       if (s) s.style.display = 'block';
     }});
-    renderCharts();
+    updateDashboard();
+    updateDiagnosis(view);
   }}
 }}
 
+function updateKPIs() {{
+  // KPI cards are statically rendered; no dynamic update needed for monthly view
+}}
+
+function updateDiagnosis(view) {{
+  const heroTitle = document.getElementById('hero-title');
+  const heroSub = document.getElementById('hero-sub');
+  const heroInsight = document.getElementById('hero-insight');
+  const heroProgress = document.getElementById('hero-progress');
+  const heroProgressLabels = document.getElementById('hero-progress-labels');
+  const uj = RAW_DATA.user_journey;
+
+  // Update signal cards visibility
+  document.querySelectorAll('.signal-view').forEach(el => {{
+    el.style.display = el.dataset.view === view ? 'grid' : 'none';
+  }});
+  // Update diagnosis cards visibility
+  document.querySelectorAll('.diagnosis-view').forEach(el => {{
+    el.style.display = el.dataset.view === view ? 'grid' : 'none';
+  }});
+  // Update resource table visibility
+  document.querySelectorAll('.resource-table-view').forEach(el => {{
+    el.style.display = el.dataset.view === view ? 'table-row-group' : 'none';
+  }});
+
+  if (view === 'march') {{
+    heroTitle.textContent = `3月 GMV ¥${{(uj.march.gmv/10000).toFixed(1)}}万`;
+    heroSub.textContent = `线索 ${{uj.march.lead.toLocaleString()}} 条，首单 ${{uj.march.order.toLocaleString()}} 单`;
+    heroInsight.querySelector('span:last-child').textContent = '3月基准数据，作为后续月份对比基准';
+    heroProgress.innerHTML = '<div class="red" style="width:50%"></div><div class="green" style="width:50%"></div>';
+    heroProgressLabels.innerHTML = '<span>基准月数据</span><span>基准月数据</span>';
+  }} else if (view === 'may') {{
+    const gmvMom = uj.mom_45.gmv;
+    const leadsMom = uj.mom_45.lead;
+    const gmvArrow = gmvMom >= 0 ? '增长' : '下降';
+    const leadsArrow = leadsMom >= 0 ? '增长' : '下降';
+    heroTitle.textContent = `5月 MTD GMV ¥${{(uj.may.gmv/10000).toFixed(1)}}万`;
+    heroSub.textContent = `线索 ${{uj.may.lead.toLocaleString()}} 条，首单 ${{uj.may.order.toLocaleString()}} 单，环比4月同期 ${{leadsArrow}} ${{Math.abs(leadsMom).toFixed(1)}}%`;
+    heroInsight.querySelector('span:last-child').textContent = `5月 MTD 线索数环比4月同期 ${{leadsArrow}} ${{Math.abs(leadsMom).toFixed(1)}}%，GMV环比${{gmvArrow}} ${{Math.abs(gmvMom).toFixed(1)}}%`;
+    const negPct = gmvMom < 0 ? 70 : 30;
+    const posPct = gmvMom < 0 ? 30 : 70;
+    heroProgress.innerHTML = `<div class="red" style="width:${{negPct}}%"></div><div class="green" style="width:${{posPct}}%"></div>`;
+    heroProgressLabels.innerHTML = `<span>负向驱动因素 (${{negPct}}%)</span><span>正向抵消因素 (${{posPct}}%)</span>`;
+  }} else {{
+    // april or compare - restore original
+    const orig = DIAGNOSIS_ORIGINAL;
+    heroTitle.textContent = orig.headline;
+    heroSub.textContent = orig.subline;
+    heroInsight.querySelector('span:last-child').textContent = orig.insight;
+    heroProgress.innerHTML = `<div class="red" style="width:${{orig.negative_pct}}%"></div><div class="green" style="width:${{orig.positive_pct}}%"></div>`;
+    heroProgressLabels.innerHTML = `<span>负向驱动因素 (${{orig.negative_pct}}%)</span><span>正向抵消因素 (${{orig.positive_pct}}%)</span>`;
+  }}
+}}
+
+function updateDashboard() {{
+  renderCharts();
+  updateKPIs();
+}}
+
 function renderCharts() {{
+  // Month configuration based on current view
+  const isMay = currentMonth === 'may';
+  const prevMonthKey = isMay ? '2026-04' : '2026-03';
+  const curMonthKey = isMay ? '2026-05' : '2026-04';
+  const prevMonthLabel = isMay ? '4月' : '3月';
+  const curMonthLabel = isMay ? '5月' : '4月';
+  const ujLev = RAW_DATA.user_journey;
+  const ujPrev = isMay ? ujLev.april : ujLev.march;
+  const ujCur = isMay ? ujLev.may : ujLev.april;
+
   // 1. Front-end Efficiency Chart: 各资源位 CTR / CTCVR 对比
   const ccChart = echarts.init(document.getElementById('conversion-change-chart'));
   const feResData = RAW_DATA.resource_efficiency || [];
-  const feTopRes = feResData.sort((a, b) => (b['2026-04'].leads || 0) - (a['2026-04'].leads || 0)).slice(0, 8);
+  const feTopRes = feResData.sort((a, b) => (b[curMonthKey].leads || 0) - (a[curMonthKey].leads || 0)).slice(0, 8);
   const feCategories = feTopRes.map(r => r.resource);
-  const feCtrMarch = feTopRes.map(r => (r['2026-03'].ctr || 0));
-  const feCtrApril = feTopRes.map(r => (r['2026-04'].ctr || 0));
-  const feCtcvrMarch = feTopRes.map(r => (r['2026-03'].lead_rate || 0));
-  const feCtcvrApril = feTopRes.map(r => (r['2026-04'].lead_rate || 0));
+  const feCtrPrev = feTopRes.map(r => (r[prevMonthKey].ctr || 0));
+  const feCtrCur = feTopRes.map(r => (r[curMonthKey].ctr || 0));
+  const feCtcvrPrev = feTopRes.map(r => (r[prevMonthKey].lead_rate || 0));
+  const feCtcvrCur = feTopRes.map(r => (r[curMonthKey].lead_rate || 0));
   ccChart.setOption({{
     backgroundColor: 'transparent',
     tooltip: {{
@@ -1047,8 +1422,8 @@ function renderCharts() {{
         const d = feTopRes.find(r => r.resource === res);
         if (!d) return res;
         return '<div style="font-weight:600;margin-bottom:4px">' + res + '</div>' +
-               '<div>CTR: 3月 ' + (d['2026-03'].ctr || 0).toFixed(2) + '% / 4月 ' + (d['2026-04'].ctr || 0).toFixed(2) + '%</div>' +
-               '<div>CTCVR: 3月 ' + (d['2026-03'].lead_rate || 0).toFixed(2) + '% / 4月 ' + (d['2026-04'].lead_rate || 0).toFixed(2) + '%</div>';
+               '<div>CTR: ' + prevMonthLabel + ' ' + (d[prevMonthKey].ctr || 0).toFixed(2) + '% / ' + curMonthLabel + ' ' + (d[curMonthKey].ctr || 0).toFixed(2) + '%</div>' +
+               '<div>CTCVR: ' + prevMonthLabel + ' ' + (d[prevMonthKey].lead_rate || 0).toFixed(2) + '% / ' + curMonthLabel + ' ' + (d[curMonthKey].lead_rate || 0).toFixed(2) + '%</div>';
       }}
     }},
     legend: {{bottom: 0, textStyle: {{color: '#94a3b8', fontSize: 11}}}},
@@ -1067,26 +1442,26 @@ function renderCharts() {{
     }},
     series: [
       {{
-        name: '3月 CTR', type: 'bar',
-        data: feCtrMarch,
+        name: prevMonthLabel + ' CTR', type: 'bar',
+        data: feCtrPrev,
         itemStyle: {{color: 'rgba(59,130,246,0.5)', borderRadius: [4,0,0,4]}},
         barMaxWidth: 12
       }},
       {{
-        name: '4月 CTR', type: 'bar',
-        data: feCtrApril,
+        name: curMonthLabel + ' CTR', type: 'bar',
+        data: feCtrCur,
         itemStyle: {{color: '#3b82f6', borderRadius: [0,4,4,0]}},
         barMaxWidth: 12
       }},
       {{
-        name: '3月 CTCVR', type: 'bar',
-        data: feCtcvrMarch,
+        name: prevMonthLabel + ' CTCVR', type: 'bar',
+        data: feCtcvrPrev,
         itemStyle: {{color: 'rgba(139,92,246,0.5)', borderRadius: [4,0,0,4]}},
         barMaxWidth: 12
       }},
       {{
-        name: '4月 CTCVR', type: 'bar',
-        data: feCtcvrApril,
+        name: curMonthLabel + ' CTCVR', type: 'bar',
+        data: feCtcvrCur,
         itemStyle: {{color: '#8b5cf6', borderRadius: [0,4,4,0]}},
         barMaxWidth: 12
       }}
@@ -1096,12 +1471,12 @@ function renderCharts() {{
   // 1.2 Back-end Efficiency Chart: 各资源位 首单转化率 / 单线索产出 对比
   const beChart = echarts.init(document.getElementById('backend-efficiency-chart'));
   const beResData = RAW_DATA.resource_efficiency || [];
-  const beTopRes = beResData.sort((a, b) => (b['2026-04'].leads || 0) - (a['2026-04'].leads || 0)).slice(0, 8);
+  const beTopRes = beResData.sort((a, b) => (b[curMonthKey].leads || 0) - (a[curMonthKey].leads || 0)).slice(0, 8);
   const beCategories = beTopRes.map(r => r.resource);
-  const beCvrMarch = beTopRes.map(r => (r['2026-03'].cvr_from_leads || 0));
-  const beCvrApril = beTopRes.map(r => (r['2026-04'].cvr_from_leads || 0));
-  const beArpuMarch = beTopRes.map(r => (r['2026-03'].arpu || 0));
-  const beArpuApril = beTopRes.map(r => (r['2026-04'].arpu || 0));
+  const beCvrPrev = beTopRes.map(r => (r[prevMonthKey].cvr_from_leads || 0));
+  const beCvrCur = beTopRes.map(r => (r[curMonthKey].cvr_from_leads || 0));
+  const beArpuPrev = beTopRes.map(r => (r[prevMonthKey].arpu || 0));
+  const beArpuCur = beTopRes.map(r => (r[curMonthKey].arpu || 0));
   beChart.setOption({{
     backgroundColor: 'transparent',
     tooltip: {{
@@ -1114,11 +1489,11 @@ function renderCharts() {{
         const res = p[0].name;
         const d = beTopRes.find(r => r.resource === res);
         if (!d) return res;
-        const cvrMom = ((d['2026-04'].cvr_from_leads || 0) - (d['2026-03'].cvr_from_leads || 0));
-        const arpuMom = d['2026-03'].arpu > 0 ? ((d['2026-04'].arpu - d['2026-03'].arpu) / d['2026-03'].arpu * 100) : 0;
+        const cvrMom = ((d[curMonthKey].cvr_from_leads || 0) - (d[prevMonthKey].cvr_from_leads || 0));
+        const arpuMom = d[prevMonthKey].arpu > 0 ? ((d[curMonthKey].arpu - d[prevMonthKey].arpu) / d[prevMonthKey].arpu * 100) : 0;
         return '<div style="font-weight:600;margin-bottom:4px">' + res + '</div>' +
-               '<div>首单转化率(CVR): 3月 ' + (d['2026-03'].cvr_from_leads || 0).toFixed(2) + '% / 4月 ' + (d['2026-04'].cvr_from_leads || 0).toFixed(2) + '% (环比' + (cvrMom >= 0 ? '+' : '') + cvrMom.toFixed(2) + 'pp)</div>' +
-               '<div>单线索产出(ARPU): 3月 ¥' + (d['2026-03'].arpu || 0).toFixed(1) + ' / 4月 ¥' + (d['2026-04'].arpu || 0).toFixed(1) + ' (环比' + (arpuMom >= 0 ? '+' : '') + arpuMom.toFixed(1) + '%)</div>' +
+               '<div>首单转化率(CVR): ' + prevMonthLabel + ' ' + (d[prevMonthKey].cvr_from_leads || 0).toFixed(2) + '% / ' + curMonthLabel + ' ' + (d[curMonthKey].cvr_from_leads || 0).toFixed(2) + '% (环比' + (cvrMom >= 0 ? '+' : '') + cvrMom.toFixed(2) + 'pp)</div>' +
+               '<div>单线索产出(ARPU): ' + prevMonthLabel + ' ¥' + (d[prevMonthKey].arpu || 0).toFixed(1) + ' / ' + curMonthLabel + ' ¥' + (d[curMonthKey].arpu || 0).toFixed(1) + ' (环比' + (arpuMom >= 0 ? '+' : '') + arpuMom.toFixed(1) + '%)</div>' +
                '<div style="font-size:11px;color:#94a3b8;margin-top:4px">公式: 首单转化率 = SUM(首单数) / SUM(线索数) | 单线索产出 = GMV / 线索数</div>';
       }}
     }},
@@ -1148,32 +1523,32 @@ function renderCharts() {{
     }},
     series: [
       {{
-        name: '3月 首单转化率', type: 'bar',
+        name: prevMonthLabel + ' 首单转化率', type: 'bar',
         xAxisIndex: 0,
-        data: beCvrMarch,
+        data: beCvrPrev,
         itemStyle: {{color: 'rgba(16,185,129,0.5)', borderRadius: [4,0,0,4]}},
         barMaxWidth: 10
       }},
       {{
-        name: '4月 首单转化率', type: 'bar',
+        name: curMonthLabel + ' 首单转化率', type: 'bar',
         xAxisIndex: 0,
-        data: beCvrApril,
+        data: beCvrCur,
         itemStyle: {{color: '#10b981', borderRadius: [0,4,4,0]}},
         barMaxWidth: 10
       }},
       {{
-        name: '3月 单线索产出', type: 'line',
+        name: prevMonthLabel + ' 单线索产出', type: 'line',
         xAxisIndex: 1,
-        data: beArpuMarch,
+        data: beArpuPrev,
         symbol: 'circle', symbolSize: 6,
         lineStyle: {{color: 'rgba(245,158,11,0.5)', width: 2}},
         itemStyle: {{color: 'rgba(245,158,11,0.5)'}},
         label: {{show: false}}
       }},
       {{
-        name: '4月 单线索产出', type: 'line',
+        name: curMonthLabel + ' 单线索产出', type: 'line',
         xAxisIndex: 1,
-        data: beArpuApril,
+        data: beArpuCur,
         symbol: 'circle', symbolSize: 6,
         lineStyle: {{color: '#f59e0b', width: 2}},
         itemStyle: {{color: '#f59e0b'}},
@@ -1183,12 +1558,12 @@ function renderCharts() {{
   }});
 
   // 1.5 GMV Leverage Change Chart (环比幅度)
-  const ujLev = RAW_DATA.user_journey;
   const levChart = echarts.init(document.getElementById('leverage-compare-chart'));
+  const momKey = isMay ? 'mom_45' : 'mom_34';
   const levData = [
-    {{name: '线索生成率', value: ujLev.mom.lead_gen_rate}},
-    {{name: '首单转化率', value: ujLev.mom.cvr_from_leads}},
-    {{name: 'LTV', value: ujLev.mom.arpu}},
+    {{name: '线索生成率', value: ujLev[momKey].lead_gen_rate}},
+    {{name: '首单转化率', value: ujLev[momKey].cvr_from_leads}},
+    {{name: 'LTV', value: ujLev[momKey].arpu}},
   ];
   levChart.setOption({{
     backgroundColor: 'transparent',
@@ -1325,11 +1700,17 @@ function renderCharts() {{
 
   // 1.7 Resource GMV Waterfall Chart (Screen 3)
   const rfwChart = echarts.init(document.getElementById('resource-gmv-waterfall-chart'));
-  const rfwData = RAW_DATA.resource_gmv_waterfall || [];
-  const rfwCategories = ['3月GMV'];
+  const rfwIsMay = currentMonth === 'may';
+  const rfwData = rfwIsMay ? (RAW_DATA.resource_gmv_waterfall_45 || []) : (RAW_DATA.resource_gmv_waterfall || []);
+  const rfwStartLabel = rfwIsMay ? '4月GMV' : '3月GMV';
+  const rfwEndLabel = rfwIsMay ? '5月GMV' : '4月GMV';
+  const rfwStartKey = rfwIsMay ? 'm4_gmv' : 'm3_gmv';
+  const rfwEndKey = rfwIsMay ? 'm5_gmv' : 'm4_gmv';
+  document.getElementById('waterfall-title').textContent = rfwIsMay ? '4月 → 5月变化量' : '3月 → 4月变化量';
+  const rfwCategories = [rfwStartLabel];
   const rfwInvisible = [0];
-  const rfwValues = [{{value: Math.abs(rfwData.reduce((s,r) => s + r.m3_gmv, 0))/10000, itemStyle: {{color: '#3b82f6'}}}}];
-  let rfwCumulative = rfwData.reduce((s,r) => s + r.m3_gmv, 0) / 10000;
+  const rfwValues = [{{value: Math.abs(rfwData.reduce((s,r) => s + r[rfwStartKey], 0))/10000, itemStyle: {{color: '#3b82f6'}}}}];
+  let rfwCumulative = rfwData.reduce((s,r) => s + r[rfwStartKey], 0) / 10000;
   rfwData.forEach(r => {{
     const val = r.change / 10000;
     if (val >= 0) {{
@@ -1344,8 +1725,8 @@ function renderCharts() {{
     rfwCategories.push(r.resource);
   }});
   rfwInvisible.push(0);
-  rfwValues.push({{value: Math.abs(rfwData.reduce((s,r) => s + r.m4_gmv, 0))/10000, itemStyle: {{color: '#8b5cf6'}}}});
-  rfwCategories.push('4月GMV');
+  rfwValues.push({{value: Math.abs(rfwData.reduce((s,r) => s + r[rfwEndKey], 0))/10000, itemStyle: {{color: '#8b5cf6'}}}});
+  rfwCategories.push(rfwEndLabel);
   rfwChart.setOption({{
     backgroundColor: 'transparent',
     tooltip: {{
@@ -1357,8 +1738,8 @@ function renderCharts() {{
       formatter: function(params) {{
         const idx = params[0].dataIndex;
         const name = rfwCategories[idx];
-        if (idx === 0) return '<div style="font-weight:600">3月总GMV</div><div>¥' + (rfwData.reduce((s,r) => s + r.m3_gmv, 0)/10000).toFixed(1) + '万</div>';
-        if (idx === rfwCategories.length - 1) return '<div style="font-weight:600">4月总GMV</div><div>¥' + (rfwData.reduce((s,r) => s + r.m4_gmv, 0)/10000).toFixed(1) + '万</div>';
+        if (idx === 0) return '<div style="font-weight:600">' + rfwStartLabel + '总GMV</div><div>¥' + (rfwData.reduce((s,r) => s + r[rfwStartKey], 0)/10000).toFixed(1) + '万</div>';
+        if (idx === rfwCategories.length - 1) return '<div style="font-weight:600">' + rfwEndLabel + '总GMV</div><div>¥' + (rfwData.reduce((s,r) => s + r[rfwEndKey], 0)/10000).toFixed(1) + '万</div>';
         const r = rfwData[idx - 1];
         const color = r.change >= 0 ? '#10b981' : '#ef4444';
         const sign = r.change >= 0 ? '+' : '';
@@ -1391,8 +1772,8 @@ function renderCharts() {{
           show: true, position: 'top', color: '#f8fafc', fontSize: 10,
           formatter: function(p) {{
             const idx = p.dataIndex;
-            if (idx === 0) return '¥' + (rfwData.reduce((s,r) => s + r.m3_gmv, 0)/10000).toFixed(0) + '万';
-            if (idx === rfwCategories.length - 1) return '¥' + (rfwData.reduce((s,r) => s + r.m4_gmv, 0)/10000).toFixed(0) + '万';
+            if (idx === 0) return '¥' + (rfwData.reduce((s,r) => s + r[rfwStartKey], 0)/10000).toFixed(0) + '万';
+            if (idx === rfwCategories.length - 1) return '¥' + (rfwData.reduce((s,r) => s + r[rfwEndKey], 0)/10000).toFixed(0) + '万';
             const r = rfwData[idx - 1];
             const sign = r.change >= 0 ? '+' : '';
             return sign + '¥' + (r.change/10000).toFixed(1) + '万';
@@ -1405,8 +1786,8 @@ function renderCharts() {{
   // 2. Funnel Chart (split: front-end + back-end)
   const funnelChart = echarts.init(document.getElementById('funnel-chart'));
   const uj = {user_journey_json};
-  const isMarch = currentMonth === 'march';
-  const ujData = isMarch ? uj.march : uj.april;
+  const funnelMomKey = isMay ? 'mom_45' : 'mom_34';
+  const ujData = currentMonth === 'march' ? uj.march : (currentMonth === 'may' ? uj.may : uj.april);
 
   const frontItems = [
     {{name: '曝光 UV', key: 'exposure', rateKey: 'ctr', color: ['#1e3a5f','#3b82f6']}},
@@ -1423,7 +1804,7 @@ function renderCharts() {{
 
   function makeFunnelLabel(item, p, isArpu) {{
     const rate = ujData[item.rateKey];
-    const mom = uj.mom[item.rateKey];
+    const mom = uj[funnelMomKey][item.rateKey];
     const momArrow = mom > 0 ? '↑' : '↓';
     const rateStr = isArpu ? '¥' + rate.toFixed(0) : rate.toFixed(1) + '%';
     return p.name + '\\n' + p.value.toLocaleString() + '\\n' + rateStr + ' ' + momArrow + Math.abs(mom).toFixed(1) + '%';
@@ -1431,7 +1812,7 @@ function renderCharts() {{
 
   function makeTooltip(item, p, isArpu) {{
     const rate = ujData[item.rateKey];
-    const mom = uj.mom[item.rateKey];
+    const mom = uj[funnelMomKey][item.rateKey];
     const momArrow = mom > 0 ? '↑' : '↓';
     const momColor = mom > 0 ? '#10b981' : '#ef4444';
     const rateLabel = isArpu ? '客单价: ¥' + rate.toFixed(1) : '转化率: ' + rate.toFixed(2) + '%';
@@ -1501,9 +1882,25 @@ function renderCharts() {{
 
   // 3. Stage Compare Chart
   const scChart = echarts.init(document.getElementById('stage-compare-chart'));
-  const stages = ['CTR', '领课转化率', '好友率', '到课率', '完课率', '首单转化率'];
-  const marchRates = [2.1, 6.7, 69.78, 97.12, 75.61, 14.93];
-  const aprilRates = [1.27, 5.8, 69.74, 89.12, 76.15, 14.91];
+  const ccData = RAW_DATA.conversion_change || [];
+  const stageMap = ['CTR', '领课转化率', '好友率', '到课率', '完课率', '首单转化率'];
+  const stageMetrics = ['CTR', '领课转化率', '好友率', '到课率', '完课率', '完课→首单转化率'];
+  const prevRates = stageMetrics.map(m => {{
+    const item = ccData.find(c => c.metric === m);
+    return item ? item.march : 0;
+  }});
+  const curRates = stageMetrics.map(m => {{
+    const item = ccData.find(c => c.metric === m);
+    return item ? item.april : 0;
+  }});
+  const mayRates = stageMetrics.map(m => {{
+    const item = ccData.find(c => c.metric === m);
+    return item ? item.may : 0;
+  }});
+  const scPrevLabel = prevMonthLabel;
+  const scCurLabel = curMonthLabel;
+  const scPrevData = isMay ? curRates : prevRates;
+  const scCurData = isMay ? mayRates : curRates;
   scChart.setOption({{
     backgroundColor: 'transparent',
     tooltip: {{
@@ -1512,7 +1909,7 @@ function renderCharts() {{
       borderColor: 'rgba(148,163,184,0.2)',
       textStyle: {{color: '#f8fafc'}}
     }},
-    legend: {{data: ['3月', '4月'], bottom: 0, textStyle: {{color: '#94a3b8'}}}},
+    legend: {{data: [scPrevLabel, scCurLabel], bottom: 0, textStyle: {{color: '#94a3b8'}}}},
     grid: {{left: 80, right: 20, top: 20, bottom: 40}},
     xAxis: {{
       type: 'value',
@@ -1522,18 +1919,21 @@ function renderCharts() {{
     }},
     yAxis: {{
       type: 'category',
-      data: stages,
+      data: stageMap,
       axisLine: {{lineStyle: {{color: 'rgba(148,163,184,0.2)'}}}},
       axisLabel: {{color: '#f8fafc', fontSize: 13}}
     }},
     series: [
-      {{name: '3月', type: 'bar', data: marchRates, itemStyle: {{color: 'rgba(59,130,246,0.5)', borderRadius: [4,0,0,4]}}, barHeight: 14}},
-      {{name: '4月', type: 'bar', data: aprilRates, itemStyle: {{color: '#3b82f6', borderRadius: [0,4,4,0]}}, barHeight: 14}}
+      {{name: scPrevLabel, type: 'bar', data: scPrevData, itemStyle: {{color: 'rgba(59,130,246,0.5)', borderRadius: [4,0,0,4]}}, barHeight: 14}},
+      {{name: scCurLabel, type: 'bar', data: scCurData, itemStyle: {{color: '#3b82f6', borderRadius: [0,4,4,0]}}, barHeight: 14}}
     ]
   }});
 
   // 3.5 GMV & LTV Compare Chart
   const glChart = echarts.init(document.getElementById('gmv-ltv-compare-chart'));
+  const glLabels = isMay ? ['4月', '5月'] : ['3月', '4月'];
+  const glGmvData = isMay ? [ujLev.april.gmv/10000, ujLev.may.gmv/10000] : [ujLev.march.gmv/10000, ujLev.april.gmv/10000];
+  const glLtvData = isMay ? [ujLev.april.price_per_order, ujLev.may.price_per_order] : [ujLev.march.price_per_order, ujLev.april.price_per_order];
   glChart.setOption({{
     backgroundColor: 'transparent',
     tooltip: {{
@@ -1546,7 +1946,7 @@ function renderCharts() {{
     grid: {{left: 50, right: 50, top: 20, bottom: 30}},
     xAxis: {{
       type: 'category',
-      data: ['3月', '4月'],
+      data: glLabels,
       axisLine: {{lineStyle: {{color: 'rgba(148,163,184,0.2)'}}}},
       axisLabel: {{color: '#f8fafc'}}
     }},
@@ -1555,8 +1955,8 @@ function renderCharts() {{
       {{type: 'value', name: 'LTV(元)', position: 'right', axisLine: {{lineStyle: {{color: 'rgba(148,163,184,0.2)'}}}}, splitLine: {{show: false}}, axisLabel: {{color: '#94a3b8'}}}}
     ],
     series: [
-      {{name: 'GMV(万)', type: 'bar', data: [ujLev.march.gmv/10000, ujLev.april.gmv/10000], yAxisIndex: 0, itemStyle: {{color: 'rgba(59,130,246,0.6)', borderRadius: [4,4,0,0]}}}},
-      {{name: '客单价(LTV)', type: 'line', data: [ujLev.march.price_per_order, ujLev.april.price_per_order], yAxisIndex: 1, symbol: 'circle', symbolSize: 8, lineStyle: {{color: '#10b981', width: 2}}, itemStyle: {{color: '#10b981'}}}}
+      {{name: 'GMV(万)', type: 'bar', data: glGmvData, yAxisIndex: 0, itemStyle: {{color: 'rgba(59,130,246,0.6)', borderRadius: [4,4,0,0]}}}},
+      {{name: '客单价(LTV)', type: 'line', data: glLtvData, yAxisIndex: 1, symbol: 'circle', symbolSize: 8, lineStyle: {{color: '#10b981', width: 2}}, itemStyle: {{color: '#10b981'}}}}
     ]
   }});
 
@@ -2134,6 +2534,7 @@ function exportReport(btn) {{
 
 window.addEventListener('load', () => {{
   renderCharts();
+  updateDiagnosis(currentMonth);
   document.querySelectorAll('.animate-in').forEach((el, i) => {{
     el.style.animationDelay = (i * 80) + 'ms';
     // fallback: ensure visibility even if animation is disabled
@@ -2141,8 +2542,136 @@ window.addEventListener('load', () => {{
   }});
 }});
 
+function renderWeeklyCharts() {{
+  const wd = WEEKLY_DATA;
+  if (!wd || !wd.daily_trends) return;
+  const meta = wd.meta || {{}};
+  const maxDay = meta.mtd_day || 18;
+  const days = Array.from({{length: maxDay}}, (_, i) => (i + 1) + '日');
+  const dt = wd.daily_trends;
+  const lgr = wd.daily_lead_gen_rate || {{}};
+  function getVals(month) {{
+    return Array.from({{length: maxDay}}, (_, i) => {{
+      const d = dt[month]?.find(x => x.day === i + 1);
+      return d ? d.leads : 0;
+    }});
+  }}
+  function getLgrVals(month) {{
+    return Array.from({{length: maxDay}}, (_, i) => {{
+      const d = lgr[month]?.find(x => x.day === i + 1);
+      return d ? d.rate : 0;
+    }});
+  }}
+  const m3Vals = getVals('2026-03');
+  const m4Vals = getVals('2026-04');
+  const m5Vals = getVals('2026-05');
+  const m3Lgr = getLgrVals('2026-03');
+  const m4Lgr = getLgrVals('2026-04');
+  const m5Lgr = getLgrVals('2026-05');
+  const chart = echarts.init(document.getElementById('weekly-daily-trend-chart'));
+  chart.setOption({{
+    backgroundColor: 'transparent',
+    tooltip: {{
+      trigger: 'axis',
+      backgroundColor: '#334155',
+      borderColor: 'rgba(148,163,184,0.2)',
+      textStyle: {{color: '#f8fafc'}},
+      axisPointer: {{type: 'cross', crossStyle: {{color: 'rgba(148,163,184,0.3)'}}}},
+      formatter: params => {{
+        let s = params[0].axisValue + '<br/>';
+        params.forEach(p => {{
+          if (p.seriesName.includes('生成率')) {{
+            s += p.marker + ' ' + p.seriesName + '：<b>' + p.value.toFixed(3) + '%</b><br/>';
+          }} else {{
+            s += p.marker + ' ' + p.seriesName + '：<b>' + p.value + ' 条</b><br/>';
+          }}
+        }});
+        return s;
+      }}
+    }},
+    legend: {{top: 0, textStyle: {{color: '#94a3b8', fontSize: 10}}, itemWidth: 12, itemHeight: 8, data: ['3月','4月','5月','3月生成率','4月生成率','5月生成率']}},
+    grid: {{left: 60, right: 70, top: 44, bottom: 30}},
+    xAxis: {{
+      type: 'category',
+      data: days,
+      axisLine: {{lineStyle: {{color: 'rgba(148,163,184,0.2)'}}}},
+      axisLabel: {{color: '#94a3b8', fontSize: 11}},
+      axisTick: {{alignWithLabel: true}}
+    }},
+    yAxis: [
+      {{
+        type: 'value',
+        name: '线索数',
+        nameTextStyle: {{color: '#94a3b8', fontSize: 10}},
+        axisLine: {{lineStyle: {{color: 'rgba(148,163,184,0.2)'}}}},
+        splitLine: {{lineStyle: {{color: 'rgba(148,163,184,0.1)', type: 'dashed'}}}},
+        axisLabel: {{color: '#94a3b8'}}
+      }},
+      {{
+        type: 'value',
+        name: '线索生成率(%)',
+        nameTextStyle: {{color: '#94a3b8', fontSize: 10}},
+        axisLine: {{lineStyle: {{color: 'rgba(148,163,184,0.2)'}}}},
+        splitLine: {{show: false}},
+        axisLabel: {{color: '#94a3b8', formatter: '{{value}}%'}},
+        position: 'right'
+      }}
+    ],
+    series: [
+      {{
+        name: '3月', type: 'line',
+        data: m3Vals,
+        smooth: true,
+        symbol: 'circle', symbolSize: 4,
+        lineStyle: {{color: '#4a5568', width: 2}},
+        itemStyle: {{color: '#4a5568'}},
+        areaStyle: {{color: 'rgba(74,85,104,0.1)'}}
+      }},
+      {{
+        name: '4月', type: 'line',
+        data: m4Vals,
+        smooth: true,
+        symbol: 'circle', symbolSize: 4,
+        lineStyle: {{color: '#8b5cf6', width: 2}},
+        itemStyle: {{color: '#8b5cf6'}},
+        areaStyle: {{color: 'rgba(139,92,246,0.1)'}}
+      }},
+      {{
+        name: '5月', type: 'line',
+        data: m5Vals,
+        smooth: true,
+        symbol: 'circle', symbolSize: 5,
+        lineStyle: {{color: '#3b82f6', width: 2.5}},
+        itemStyle: {{color: '#3b82f6'}},
+        areaStyle: {{color: 'rgba(59,130,246,0.1)'}}
+      }},
+      {{
+        name: '3月生成率', type: 'line', yAxisIndex: 1,
+        data: m3Lgr,
+        smooth: true, symbol: 'none',
+        lineStyle: {{color: 'rgba(74,85,104,0.5)', width: 1.5, type: 'dashed'}},
+        itemStyle: {{color: 'rgba(74,85,104,0.5)'}}
+      }},
+      {{
+        name: '4月生成率', type: 'line', yAxisIndex: 1,
+        data: m4Lgr,
+        smooth: true, symbol: 'none',
+        lineStyle: {{color: 'rgba(139,92,246,0.5)', width: 1.5, type: 'dashed'}},
+        itemStyle: {{color: 'rgba(139,92,246,0.5)'}}
+      }},
+      {{
+        name: '5月生成率', type: 'line', yAxisIndex: 1,
+        data: m5Lgr,
+        smooth: true, symbol: 'none',
+        lineStyle: {{color: 'rgba(59,130,246,0.7)', width: 2, type: 'dashed'}},
+        itemStyle: {{color: 'rgba(59,130,246,0.7)'}}
+      }}
+    ]
+  }});
+}}
+
 window.addEventListener('resize', () => {{
-  ['conversion-change-chart','backend-efficiency-chart','leverage-compare-chart','gmv-waterfall-chart','resource-gmv-waterfall-chart','funnel-chart','stage-compare-chart','gmv-ltv-compare-chart','efficiency-matrix-chart','growth-matrix-chart','price-band-chart','sunburst-chart','mau-chart','category-price-band-chart'].forEach(id => {{
+  ['conversion-change-chart','backend-efficiency-chart','leverage-compare-chart','gmv-waterfall-chart','resource-gmv-waterfall-chart','funnel-chart','stage-compare-chart','gmv-ltv-compare-chart','efficiency-matrix-chart','growth-matrix-chart','price-band-chart','sunburst-chart','mau-chart','category-price-band-chart','weekly-daily-trend-chart'].forEach(id => {{
     const chart = echarts.getInstanceByDom(document.getElementById(id));
     if (chart) chart.resize();
   }});

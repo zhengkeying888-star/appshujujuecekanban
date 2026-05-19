@@ -10,20 +10,23 @@ if USE_FEISHU:
     ds = FeishuDataSource()
     df_detail = ds.read_backend_data('2026-03')
     df_detail = pd.concat([df_detail, ds.read_backend_data('2026-04')], ignore_index=True)
+    df_detail = pd.concat([df_detail, ds.read_backend_data('2026-05')], ignore_index=True)
     m3_ad = ds.read_frontend_data('2026-03')
     m4_ad = ds.read_frontend_data('2026-04')
+    m5_ad = ds.read_frontend_data('2026-05')
     mau_df = ds.read_mau_data()
     cat_type_df = ds.read_category_mapping()
 else:
     # 前链路数据（曝光、点击、售卖页浏览）
     m3_ad = pd.read_excel('/Users/zhengkeying/agent teams作业/APP广告位明细3月汇总.xlsx')
     m4_ad = pd.read_excel('/Users/zhengkeying/agent teams作业/4月广告位明细.xlsx')
+    m5_ad = pd.read_excel('/Users/zhengkeying/agent teams作业/5.1-17广告位明细.xlsx')
 
     # 后链路数据（线索、好友、到课、完课、首单）
-    df_detail = pd.read_excel('/Users/zhengkeying/agent teams作业/APP线索广告位拆解 3-4月明细版本.xlsx')
+    df_detail = pd.read_excel('/Users/zhengkeying/agent teams作业/更新4-5月app数据.xlsx')
 
     # MAU数据
-    mau_df = pd.read_excel('/Users/zhengkeying/agent teams作业/3-4月月活人数.xlsx')
+    mau_df = pd.read_excel('/Users/zhengkeying/agent teams作业/mau_data_3_4_5.xlsx')
 
     # 品类类型映射（正式品/孵化品）
     cat_type_df = pd.read_csv('/Users/zhengkeying/agent teams作业/APP品类流量结构.csv', nrows=100)
@@ -118,17 +121,15 @@ TARGET_RESOURCES = [
 ]
 
 # 映射广告位明细中的资源位
-m3_ad['resource'] = m3_ad['广告位名称'].map(AD_NAME_MAP).fillna(m3_ad['广告位名称'])
-m4_ad['resource'] = m4_ad['广告位名称'].map(AD_NAME_MAP).fillna(m4_ad['广告位名称'])
-m3_ad = m3_ad[~m3_ad['广告位名称'].isin(['H5-课程播放页-广告'])].copy()
-m4_ad = m4_ad[~m4_ad['广告位名称'].isin(['H5-课程播放页-广告'])].copy()
+for ad in [m3_ad, m4_ad, m5_ad]:
+    ad['resource'] = ad['广告位名称'].map(AD_NAME_MAP).fillna(ad['广告位名称'])
+    ad = ad[~ad['广告位名称'].isin(['H5-课程播放页-广告'])].copy()
 
 # 飞书 Base 可能将数值列识别为 text，需显式转换
 for col in ['曝光uv', '点击uv', '售卖页浏览uv', '线索数', '首单订单数', '首单订单金额', '课程价格']:
-    if col in m3_ad.columns:
-        m3_ad[col] = pd.to_numeric(m3_ad[col], errors='coerce')
-    if col in m4_ad.columns:
-        m4_ad[col] = pd.to_numeric(m4_ad[col], errors='coerce')
+    for ad in [m3_ad, m4_ad, m5_ad]:
+        if col in ad.columns:
+            ad[col] = pd.to_numeric(ad[col], errors='coerce')
 
 # 保留完整的后链路数据用于月度汇总（不筛选资源位）
 df_detail_full = df_detail.copy()
@@ -149,6 +150,7 @@ def agg_ad(df):
 
 m3_ad_agg = agg_ad(m3_ad)
 m4_ad_agg = agg_ad(m4_ad)
+m5_ad_agg = agg_ad(m5_ad)
 
 # ============================================================
 # 4. 后链路聚合（线索拆解明细）
@@ -217,6 +219,7 @@ def agg_detail(df):
 
 m3_detail_agg = agg_detail(df_detail[df_detail['stat_month'] == '2026-03'])
 m4_detail_agg = agg_detail(df_detail[df_detail['stat_month'] == '2026-04'])
+m5_detail_agg = agg_detail(df_detail[df_detail['stat_month'] == '2026-05'])
 
 # ============================================================
 # 5. 合并前链路和后链路
@@ -237,6 +240,7 @@ def merge_month(ad_agg, detail_agg, month_label):
 
 m3_merged = merge_month(m3_ad_agg, m3_detail_agg, '2026-03')
 m4_merged = merge_month(m4_ad_agg, m4_detail_agg, '2026-04')
+m5_merged = merge_month(m5_ad_agg, m5_detail_agg, '2026-05')
 
 # ============================================================
 # 6. 月度汇总
@@ -246,28 +250,23 @@ m4_merged = merge_month(m4_ad_agg, m4_detail_agg, '2026-04')
 
 m3_full = df_detail_full[df_detail_full['stat_month'] == '2026-03']
 m4_full = df_detail_full[df_detail_full['stat_month'] == '2026-04']
+m5_full = df_detail_full[df_detail_full['stat_month'] == '2026-05']
 
-m3_total = {
-    '曝光uv': int(m3_merged['曝光uv'].sum()),
-    '点击uv': int(m3_merged['点击uv'].sum()),
-    'leads': len(m3_full),
-    'add_friend': int(m3_full['is_add_friend'].sum()),
-    'attend': int(m3_full['是否到课'].sum()),
-    'complete': int(m3_full[completion_cols].apply(lambda row: (row.fillna(0) >= 1).any(), axis=1).sum()),
-    'orders': int(m3_full['首单数'].sum()),
-    'gmv': float(m3_full['首单流水'].sum()),
-}
+def build_monthly_total(merged, full):
+    return {
+        '曝光uv': int(merged['曝光uv'].sum()),
+        '点击uv': int(merged['点击uv'].sum()),
+        'leads': len(full),
+        'add_friend': int(full['is_add_friend'].sum()),
+        'attend': int(full['是否到课'].sum()),
+        'complete': int(full[completion_cols].apply(lambda row: (row.fillna(0) >= 1).any(), axis=1).sum()),
+        'orders': int(full['首单数'].sum()),
+        'gmv': float(full['首单流水'].sum()),
+    }
 
-m4_total = {
-    '曝光uv': int(m4_merged['曝光uv'].sum()),
-    '点击uv': int(m4_merged['点击uv'].sum()),
-    'leads': len(m4_full),
-    'add_friend': int(m4_full['is_add_friend'].sum()),
-    'attend': int(m4_full['是否到课'].sum()),
-    'complete': int(m4_full[completion_cols].apply(lambda row: (row.fillna(0) >= 1).any(), axis=1).sum()),
-    'orders': int(m4_full['首单数'].sum()),
-    'gmv': float(m4_full['首单流水'].sum()),
-}
+m3_total = build_monthly_total(m3_merged, m3_full)
+m4_total = build_monthly_total(m4_merged, m4_full)
+m5_total = build_monthly_total(m5_merged, m5_full)
 
 # MAU
 mau_summary = {}
@@ -276,45 +275,42 @@ for month in mau_df['月份'].unique():
     total = sub['月活人数'].sum()
     mau_summary[str(month)] = {'total_mau': int(total)}
 
-m3_mau = mau_summary.get('2026-03', {}).get('total_mau', 758580)
-m4_mau = mau_summary.get('2026-04', {}).get('total_mau', 702752)
+def calc_rates(total, mau):
+    total['lead_gen_rate'] = round(total['leads'] / mau * 100, 2) if mau > 0 else 0
+    total['ctr'] = round(total['点击uv'] / total['曝光uv'] * 100, 2) if total['曝光uv'] > 0 else 0
+    total['lead_rate'] = round(total['leads'] / total['点击uv'] * 100, 2) if total['点击uv'] > 0 else 0
+    total['friend_rate'] = round(total['add_friend'] / total['leads'] * 100, 2) if total['leads'] > 0 else 0
+    total['attend_rate'] = round(total['attend'] / total['add_friend'] * 100, 2) if total['add_friend'] > 0 else 0
+    total['complete_rate'] = round(total['complete'] / total['attend'] * 100, 2) if total['attend'] > 0 else 0
+    total['order_rate'] = round(total['orders'] / total['complete'] * 100, 2) if total['complete'] > 0 else 0
+    total['arpu'] = round(total['gmv'] / total['leads'], 2) if total['leads'] > 0 else 0
+    total['cvr_from_leads'] = round(total['orders'] / total['leads'] * 100, 2) if total['leads'] > 0 else 0
+    total['price_per_order'] = round(total['gmv'] / total['orders'], 2) if total['orders'] > 0 else 0
 
-m3_total['lead_gen_rate'] = round(m3_total['leads'] / m3_mau * 100, 2)
-m4_total['lead_gen_rate'] = round(m4_total['leads'] / m4_mau * 100, 2)
+for total, month in [(m3_total, '2026-03'), (m4_total, '2026-04'), (m5_total, '2026-05')]:
+    mau = mau_summary.get(month, {}).get('total_mau', 0)
+    calc_rates(total, mau)
 
-# 计算整体转化率
-m3_total['ctr'] = round(m3_total['点击uv'] / m3_total['曝光uv'] * 100, 2)
-m3_total['lead_rate'] = round(m3_total['leads'] / m3_total['点击uv'] * 100, 2)
-m3_total['friend_rate'] = round(m3_total['add_friend'] / m3_total['leads'] * 100, 2)
-m3_total['attend_rate'] = round(m3_total['attend'] / m3_total['add_friend'] * 100, 2)
-m3_total['complete_rate'] = round(m3_total['complete'] / m3_total['attend'] * 100, 2)
-m3_total['order_rate'] = round(m3_total['orders'] / m3_total['complete'] * 100, 2)
-m3_total['arpu'] = round(m3_total['gmv'] / m3_total['leads'], 2)
-m3_total['cvr_from_leads'] = round(m3_total['orders'] / m3_total['leads'] * 100, 2) if m3_total['leads'] > 0 else 0
-m3_total['price_per_order'] = round(m3_total['gmv'] / m3_total['orders'], 2) if m3_total['orders'] > 0 else 0
-
-m4_total['ctr'] = round(m4_total['点击uv'] / m4_total['曝光uv'] * 100, 2)
-m4_total['lead_rate'] = round(m4_total['leads'] / m4_total['点击uv'] * 100, 2)
-m4_total['friend_rate'] = round(m4_total['add_friend'] / m4_total['leads'] * 100, 2)
-m4_total['attend_rate'] = round(m4_total['attend'] / m4_total['add_friend'] * 100, 2)
-m4_total['complete_rate'] = round(m4_total['complete'] / m4_total['attend'] * 100, 2)
-m4_total['order_rate'] = round(m4_total['orders'] / m4_total['complete'] * 100, 2)
-m4_total['arpu'] = round(m4_total['gmv'] / m4_total['leads'], 2)
-m4_total['cvr_from_leads'] = round(m4_total['orders'] / m4_total['leads'] * 100, 2) if m4_total['leads'] > 0 else 0
-m4_total['price_per_order'] = round(m4_total['gmv'] / m4_total['orders'], 2) if m4_total['orders'] > 0 else 0
-
-# 环比
-mom = {}
+# 环比（4月 vs 3月）
+mom_34 = {}
 for key in ['曝光uv', '点击uv', 'leads', 'add_friend', 'attend', 'complete', 'orders', 'gmv']:
-    mom[key] = round((m4_total[key] - m3_total[key]) / m3_total[key] * 100, 2) if m3_total[key] > 0 else 0
-
+    mom_34[key] = round((m4_total[key] - m3_total[key]) / m3_total[key] * 100, 2) if m3_total[key] > 0 else 0
 for key in ['ctr', 'lead_rate', 'friend_rate', 'attend_rate', 'complete_rate', 'order_rate', 'arpu', 'lead_gen_rate', 'cvr_from_leads', 'price_per_order']:
-    mom[key] = round((m4_total[key] - m3_total[key]) / m3_total[key] * 100, 2) if m3_total[key] > 0 else 0
+    mom_34[key] = round((m4_total[key] - m3_total[key]) / m3_total[key] * 100, 2) if m3_total[key] > 0 else 0
+
+# 环比（5月 vs 4月）
+mom_45 = {}
+for key in ['曝光uv', '点击uv', 'leads', 'add_friend', 'attend', 'complete', 'orders', 'gmv']:
+    mom_45[key] = round((m5_total[key] - m4_total[key]) / m4_total[key] * 100, 2) if m4_total[key] > 0 else 0
+for key in ['ctr', 'lead_rate', 'friend_rate', 'attend_rate', 'complete_rate', 'order_rate', 'arpu', 'lead_gen_rate', 'cvr_from_leads', 'price_per_order']:
+    mom_45[key] = round((m5_total[key] - m4_total[key]) / m4_total[key] * 100, 2) if m4_total[key] > 0 else 0
 
 monthly_summary = {
     '2026-03': m3_total,
     '2026-04': m4_total,
-    '环比': mom,
+    '2026-05': m5_total,
+    '环比_34': mom_34,
+    '环比_45': mom_45,
 }
 
 # ============================================================
@@ -325,7 +321,8 @@ resource_efficiency = []
 for res in TARGET_RESOURCES:
     m3_row = m3_merged[m3_merged['resource'] == res].iloc[0] if len(m3_merged[m3_merged['resource'] == res]) > 0 else None
     m4_row = m4_merged[m4_merged['resource'] == res].iloc[0] if len(m4_merged[m4_merged['resource'] == res]) > 0 else None
-    if m3_row is None and m4_row is None:
+    m5_row = m5_merged[m5_merged['resource'] == res].iloc[0] if len(m5_merged[m5_merged['resource'] == res]) > 0 else None
+    if m3_row is None and m4_row is None and m5_row is None:
         continue
     def make_dict(row):
         if row is None:
@@ -352,16 +349,22 @@ for res in TARGET_RESOURCES:
         }
     m3_dict = make_dict(m3_row)
     m4_dict = make_dict(m4_row)
-    mom_dict = {}
+    m5_dict = make_dict(m5_row)
+    mom_34_dict = {}
+    mom_45_dict = {}
     for k in ['曝光uv', '点击uv', 'leads', 'add_friend', 'attend', 'complete', 'orders', 'gmv', 'ctr', 'lead_rate', 'friend_rate', 'attend_rate', 'complete_rate', 'order_rate', 'arpu', 'cvr_from_leads', 'gmv_per_exposure', 'gmv_per_click']:
         v3 = m3_dict.get(k, 0)
         v4 = m4_dict.get(k, 0)
-        mom_dict[k] = round((v4 - v3) / v3 * 100, 2) if v3 > 0 else (0 if v4 == 0 else 100)
+        v5 = m5_dict.get(k, 0)
+        mom_34_dict[k] = round((v4 - v3) / v3 * 100, 2) if v3 > 0 else (0 if v4 == 0 else 100)
+        mom_45_dict[k] = round((v5 - v4) / v4 * 100, 2) if v4 > 0 else (0 if v5 == 0 else 100)
     resource_efficiency.append({
         'resource': res,
         '2026-03': m3_dict,
         '2026-04': m4_dict,
-        '环比': mom_dict,
+        '2026-05': m5_dict,
+        '环比_34': mom_34_dict,
+        '环比_45': mom_45_dict,
     })
 
 # ============================================================
@@ -370,17 +373,17 @@ for res in TARGET_RESOURCES:
 
 # 6个转化环节的环比变化幅度
 conversion_change = [
-    {'stage': '曝光→点击', 'metric': 'CTR', 'march': m3_total['ctr'], 'april': m4_total['ctr'], 'mom': mom['ctr']},
-    {'stage': '点击→领课', 'metric': '领课转化率', 'march': m3_total['lead_rate'], 'april': m4_total['lead_rate'], 'mom': mom['lead_rate']},
-    {'stage': '曝光→线索', 'metric': '线索生成率', 'march': m3_total['lead_gen_rate'], 'april': m4_total['lead_gen_rate'], 'mom': mom['lead_gen_rate']},
-    {'stage': '领课→好友', 'metric': '好友率', 'march': m3_total['friend_rate'], 'april': m4_total['friend_rate'], 'mom': mom['friend_rate']},
-    {'stage': '好友→到课', 'metric': '到课率', 'march': m3_total['attend_rate'], 'april': m4_total['attend_rate'], 'mom': mom['attend_rate']},
-    {'stage': '到课→完课', 'metric': '完课率', 'march': m3_total['complete_rate'], 'april': m4_total['complete_rate'], 'mom': mom['complete_rate']},
-    {'stage': '完课→首单', 'metric': '完课→首单转化率', 'march': m3_total['order_rate'], 'april': m4_total['order_rate'], 'mom': mom['order_rate']},
+    {'stage': '曝光→点击', 'metric': 'CTR', 'march': m3_total['ctr'], 'april': m4_total['ctr'], 'may': m5_total['ctr'], 'mom_34': mom_34['ctr'], 'mom_45': mom_45['ctr']},
+    {'stage': '点击→领课', 'metric': '领课转化率', 'march': m3_total['lead_rate'], 'april': m4_total['lead_rate'], 'may': m5_total['lead_rate'], 'mom_34': mom_34['lead_rate'], 'mom_45': mom_45['lead_rate']},
+    {'stage': '曝光→线索', 'metric': '线索生成率', 'march': m3_total['lead_gen_rate'], 'april': m4_total['lead_gen_rate'], 'may': m5_total['lead_gen_rate'], 'mom_34': mom_34['lead_gen_rate'], 'mom_45': mom_45['lead_gen_rate']},
+    {'stage': '领课→好友', 'metric': '好友率', 'march': m3_total['friend_rate'], 'april': m4_total['friend_rate'], 'may': m5_total['friend_rate'], 'mom_34': mom_34['friend_rate'], 'mom_45': mom_45['friend_rate']},
+    {'stage': '好友→到课', 'metric': '到课率', 'march': m3_total['attend_rate'], 'april': m4_total['attend_rate'], 'may': m5_total['attend_rate'], 'mom_34': mom_34['attend_rate'], 'mom_45': mom_45['attend_rate']},
+    {'stage': '到课→完课', 'metric': '完课率', 'march': m3_total['complete_rate'], 'april': m4_total['complete_rate'], 'may': m5_total['complete_rate'], 'mom_34': mom_34['complete_rate'], 'mom_45': mom_45['complete_rate']},
+    {'stage': '完课→首单', 'metric': '完课→首单转化率', 'march': m3_total['order_rate'], 'april': m4_total['order_rate'], 'may': m5_total['order_rate'], 'mom_34': mom_34['order_rate'], 'mom_45': mom_45['order_rate']},
 ]
 
 # 按环比绝对值排序（恶化最严重的排最前）
-conversion_change.sort(key=lambda x: abs(x['mom']), reverse=True)
+conversion_change.sort(key=lambda x: abs(x.get('mom_45', x.get('mom_34', 0))), reverse=True)
 
 # ============================================================
 # 9. 三层评估框架
@@ -420,15 +423,16 @@ for r in resource_efficiency:
 # 增长矩阵（线索数环比 × 首单转化率环比）
 resource_growth_matrix = []
 for r in resource_efficiency:
-    mom_data = r['环比']
+    mom_data = r['环比_45']  # 使用5月vs4月环比
     m4_data = r['2026-04']
-    if m4_data.get('leads', 0) >= 20:  # 只统计线索数>=20的资源位
+    m5_data = r['2026-05']
+    if m5_data.get('leads', 0) >= 20:  # 只统计线索数>=20的资源位
         resource_growth_matrix.append({
             'resource': r['resource'],
             'leads_mom': mom_data.get('leads', 0),
             'order_rate_mom': mom_data.get('order_rate', 0),
-            'leads': m4_data['leads'],
-            'order_rate': m4_data.get('order_rate', 0),
+            'leads': m5_data['leads'],
+            'order_rate': m5_data.get('order_rate', 0),
         })
 
 # ============================================================
@@ -553,17 +557,27 @@ for res in TARGET_RESOURCES:
 
 # 资源位 GMV 瀑布图数据（Screen 3）
 resource_gmv_waterfall = []
+resource_gmv_waterfall_45 = []
 for r in resource_efficiency:
     m3_gmv = r['2026-03'].get('gmv', 0)
     m4_gmv = r['2026-04'].get('gmv', 0)
+    m5_gmv = r['2026-05'].get('gmv', 0)
     change = m4_gmv - m3_gmv
+    change_45 = m5_gmv - m4_gmv
     resource_gmv_waterfall.append({
         'resource': r['resource'],
         'm3_gmv': m3_gmv,
         'm4_gmv': m4_gmv,
         'change': change,
     })
+    resource_gmv_waterfall_45.append({
+        'resource': r['resource'],
+        'm4_gmv': m4_gmv,
+        'm5_gmv': m5_gmv,
+        'change': change_45,
+    })
 resource_gmv_waterfall.sort(key=lambda x: abs(x['change']), reverse=True)
+resource_gmv_waterfall_45.sort(key=lambda x: abs(x['change']), reverse=True)
 
 # 用户等级效率聚合（growth_level = 消费忠诚度）
 user_level_efficiency = []
@@ -613,6 +627,7 @@ for item in user_level_efficiency:
     lvl = str(item['level'])
     item['march_mau'] = mau_by_level.get('2026-03', {}).get(lvl, 0)
     item['april_mau'] = mau_by_level.get('2026-04', {}).get(lvl, 0)
+    item['may_mau'] = mau_by_level.get('2026-05', {}).get(lvl, 0)
 
 # 留存数据（模拟，用户说后面补真实数据）
 retention = {
@@ -677,20 +692,20 @@ for d in diagnosis_stages:
 actions = []
 
 # 找出影响最大的负向因子（按环比绝对值排序）
-conversion_change_sorted = sorted(conversion_change, key=lambda x: abs(x['mom']), reverse=True)
-top_negative = [c for c in conversion_change_sorted if c['mom'] < 0][:3]
+conversion_change_sorted = sorted(conversion_change, key=lambda x: abs(x.get('mom_45', x.get('mom_34', 0))), reverse=True)
+top_negative = [c for c in conversion_change_sorted if c['mom_45'] < 0][:3]
 for c in top_negative:
     factor_name = c['stage']
     if factor_name == '完课率':
-        actions.append({'priority': 'P0', 'action': '优化完课链路，提升课程体验和督学机制', 'basis': f"完课率环比下降{c['mom']:.1f}pp，为全链路最大恶化环节"})
+        actions.append({'priority': 'P0', 'action': '优化完课链路，提升课程体验和督学机制', 'basis': f"完课率环比下降{c['mom_45']:.1f}pp，为全链路最大恶化环节"})
     elif factor_name == '首单转化率':
-        actions.append({'priority': 'P0', 'action': '优化高价课转化链路，测试新的转化话术和价格策略', 'basis': f"首单转化率环比下降{c['mom']:.1f}pp"})
+        actions.append({'priority': 'P0', 'action': '优化高价课转化链路，测试新的转化话术和价格策略', 'basis': f"首单转化率环比下降{c['mom_45']:.1f}pp"})
     elif factor_name == '客单价':
-        actions.append({'priority': 'P0', 'action': '优化价格带结构，提升高价值课程占比', 'basis': f"客单价环比下降{c['mom']:.1f}%"})
+        actions.append({'priority': 'P0', 'action': '优化价格带结构，提升高价值课程占比', 'basis': f"客单价环比下降{c['mom_45']:.1f}%"})
     elif factor_name == '领课转化率':
-        actions.append({'priority': 'P1', 'action': '优化落地页体验，提升领课转化率', 'basis': f"领课转化率环比下降{c['mom']:.1f}pp"})
+        actions.append({'priority': 'P1', 'action': '优化落地页体验，提升领课转化率', 'basis': f"领课转化率环比下降{c['mom_45']:.1f}pp"})
     elif factor_name == 'CTR':
-        actions.append({'priority': 'P1', 'action': '迭代广告素材，提升CTR', 'basis': f"CTR环比下降{c['mom']:.1f}pp"})
+        actions.append({'priority': 'P1', 'action': '迭代广告素材，提升CTR', 'basis': f"CTR环比下降{c['mom_45']:.1f}pp"})
 
 # 资源位效率问题
 low_arpu = [r for r in resource_efficiency_matrix if r['arpu'] < 100 and r['leads'] > 100]
@@ -708,7 +723,7 @@ for r in declining[:2]:
 
 # 核心诊断结论（供第一屏使用）——基于真实数据归因
 gmv_change = m4_total['gmv'] - m3_total['gmv']
-gmv_mom_pct = mom['gmv']
+gmv_mom_pct = mom_45['gmv']
 
 # 计算各资源位对总GMV变化的贡献
 resource_gmv_changes = []
@@ -727,15 +742,15 @@ top_gains = sorted([x for x in resource_gmv_changes if x['change'] > 0], key=lam
 # GMV = MAU × 线索生成率 × LTV
 m3_ltv = m3_total['gmv'] / m3_total['leads'] if m3_total['leads'] > 0 else 0
 m4_ltv = m4_total['gmv'] / m4_total['leads'] if m4_total['leads'] > 0 else 0
-m3_lead_gen = m3_total['leads'] / m3_mau
-m4_lead_gen = m4_total['leads'] / m4_mau
+m3_lead_gen = m3_total['leads'] / mau_summary.get('2026-03', {}).get('total_mau', 0)
+m4_lead_gen = m4_total['leads'] / mau_summary.get('2026-04', {}).get('total_mau', 0)
 
-step_mau = m4_mau * m3_lead_gen * m3_ltv
-step_lead_gen = m4_mau * m4_lead_gen * m3_ltv
-step_ltv = m4_mau * m4_lead_gen * m4_ltv
+step_mau = mau_summary.get('2026-04', {}).get('total_mau', 0) * m3_lead_gen * m3_ltv
+step_lead_gen = mau_summary.get('2026-04', {}).get('total_mau', 0) * m4_lead_gen * m3_ltv
+step_ltv = mau_summary.get('2026-04', {}).get('total_mau', 0) * m4_lead_gen * m4_ltv
 
 factor_impacts = [
-    {'factor': 'MAU变化', 'impact': round(step_mau - m3_total['gmv'], 2), 'mom_pct': round((m4_mau - m3_mau) / m3_mau * 100, 1)},
+    {'factor': 'MAU变化', 'impact': round(step_mau - m3_total['gmv'], 2), 'mom_pct': round((mau_summary.get('2026-04', {}).get('total_mau', 0) - mau_summary.get('2026-03', {}).get('total_mau', 0)) / mau_summary.get('2026-03', {}).get('total_mau', 0) * 100, 1)},
     {'factor': '线索生成率变化', 'impact': round(step_lead_gen - step_mau, 2), 'mom_pct': round((m4_lead_gen - m3_lead_gen) / m3_lead_gen * 100, 1)},
     {'factor': 'LTV变化', 'impact': round(step_ltv - step_lead_gen, 2), 'mom_pct': round((m4_ltv - m3_ltv) / m3_ltv * 100, 1)},
 ]
@@ -782,17 +797,17 @@ core_diagnosis = {
         },
         {
             'name': '月活(MAU)',
-            'march': f"{m3_mau:,}",
-            'april': f"{m4_mau:,}",
-            'mom_pct': round((m4_mau - m3_mau) / m3_mau * 100, 2),
-            'status': 'danger' if m4_mau < m3_mau else 'success'
+            'march': f"{mau_summary.get('2026-03', {}).get('total_mau', 0):,}",
+            'april': f"{mau_summary.get('2026-04', {}).get('total_mau', 0):,}",
+            'mom_pct': round((mau_summary.get('2026-04', {}).get('total_mau', 0) - mau_summary.get('2026-03', {}).get('total_mau', 0)) / mau_summary.get('2026-03', {}).get('total_mau', 0) * 100, 2),
+            'status': 'danger' if mau_summary.get('2026-04', {}).get('total_mau', 0) < mau_summary.get('2026-03', {}).get('total_mau', 0) else 'success'
         },
         {
             'name': '线索数',
             'march': f"{m3_total['leads']:,}",
             'april': f"{m4_total['leads']:,}",
-            'mom_pct': mom['leads'],
-            'status': 'danger' if mom['leads'] < 0 else 'success'
+            'mom_pct': mom_45['leads'],
+            'status': 'danger' if mom_45['leads'] < 0 else 'success'
         },
         {
             'name': '首单转化率',
@@ -805,8 +820,8 @@ core_diagnosis = {
             'name': 'LTV',
             'march': f"¥{m3_total['arpu']:.1f}",
             'april': f"¥{m4_total['arpu']:.1f}",
-            'mom_pct': mom['arpu'],
-            'status': 'danger' if mom['arpu'] < 0 else 'success'
+            'mom_pct': mom_45['arpu'],
+            'status': 'danger' if mom_45['arpu'] < 0 else 'success'
         },
     ],
     'resource_gmv_changes': resource_gmv_changes,
@@ -827,7 +842,7 @@ if gmv_mom_pct < -5:
     })
 
 # 规则2：若单线索产出下降明显
-if mom['arpu'] < -5:
+if mom_45['arpu'] < -5:
     strategy_cards.append({
         'category': '运营',
         'title': '优化价格带结构',
@@ -838,7 +853,7 @@ if mom['arpu'] < -5:
     })
 
 # 规则3：若CTCVR（领课转化率）下滑
-if mom['lead_rate'] < -5:
+if mom_45['lead_rate'] < -5:
     strategy_cards.append({
         'category': '产研',
         'title': '优化落地页领课体验',
@@ -849,7 +864,7 @@ if mom['lead_rate'] < -5:
     })
 
 # 规则4：若CTR下滑
-if mom['ctr'] < -5:
+if mom_45['ctr'] < -5:
     strategy_cards.append({
         'category': '内容',
         'title': '迭代前端广告素材',
@@ -887,7 +902,7 @@ if len(strategy_cards) < 6:
 resource_health = []
 for r in resource_efficiency:
     m4_data = r['2026-04']
-    mom_data = r['环比']
+    mom_data = r['环比_45']
     if m4_data.get('leads', 0) == 0:
         continue
 
@@ -941,7 +956,7 @@ if gmv_mom_pct < -5 and top_declines:
     seq += 1
 
 # P0：若CTCVR下滑
-if mom['lead_rate'] < -5:
+if mom_45['lead_rate'] < -5:
     action_checklist.append({
         'seq': seq,
         'title': '落地页领课流程A/B测试',
@@ -953,14 +968,14 @@ if mom['lead_rate'] < -5:
     seq += 1
 
 # P1：若单线索产出下滑
-if mom['arpu'] < -5:
+if mom_45['arpu'] < -5:
     action_checklist.append({
         'seq': seq,
         'title': '价格带结构优化实验',
         'owner': '运营',
         'deadline': '5月25日',
         'priority': 'P1',
-        'basis': f"单线索产出环比下降{abs(mom['arpu']):.1f}%，需降低低价课占比"
+        'basis': f"单线索产出环比下降{abs(mom_45['arpu']):.1f}%，需降低低价课占比"
     })
     seq += 1
 
@@ -1133,6 +1148,7 @@ output = {
     'resource_health': resource_health,
     'action_checklist': action_checklist,
     'resource_gmv_waterfall': resource_gmv_waterfall,
+    'resource_gmv_waterfall_45': resource_gmv_waterfall_45,
     'factor_impacts': factor_impacts,
     'auto_insight': auto_insight,
 
@@ -1202,25 +1218,65 @@ output = {
             'lead_gen_rate': m4_total['lead_gen_rate'],
             'gmv': m4_total['gmv'],
         },
-        'mom': {
-            'exposure': mom['曝光uv'],
-            'click': mom['点击uv'],
-            'lead': mom['leads'],
-            'friend': mom['add_friend'],
-            'attend': mom['attend'],
-            'complete': mom['complete'],
-            'order': mom['orders'],
-            'ctr': mom['ctr'],
-            'lead_rate': mom['lead_rate'],
-            'friend_rate': mom['friend_rate'],
-            'attend_rate': mom['attend_rate'],
-            'complete_rate': mom['complete_rate'],
-            'order_rate': mom['order_rate'],
-            'arpu': mom['arpu'],
-            'cvr_from_leads': mom['cvr_from_leads'],
-            'price_per_order': mom['price_per_order'],
-            'lead_gen_rate': mom['lead_gen_rate'],
-            'gmv': mom['gmv'],
+        'may': {
+            'exposure': m5_total['曝光uv'],
+            'click': m5_total['点击uv'],
+            'lead': m5_total['leads'],
+            'friend': m5_total['add_friend'],
+            'attend': m5_total['attend'],
+            'complete': m5_total['complete'],
+            'order': m5_total['orders'],
+            'ctr': m5_total['ctr'],
+            'lead_rate': m5_total['lead_rate'],
+            'friend_rate': m5_total['friend_rate'],
+            'attend_rate': m5_total['attend_rate'],
+            'complete_rate': m5_total['complete_rate'],
+            'order_rate': m5_total['order_rate'],
+            'arpu': m5_total['arpu'],
+            'cvr_from_leads': m5_total['cvr_from_leads'],
+            'price_per_order': m5_total['price_per_order'],
+            'lead_gen_rate': m5_total['lead_gen_rate'],
+            'gmv': m5_total['gmv'],
+        },
+        'mom_34': {
+            'exposure': mom_34['曝光uv'],
+            'click': mom_34['点击uv'],
+            'lead': mom_34['leads'],
+            'friend': mom_34['add_friend'],
+            'attend': mom_34['attend'],
+            'complete': mom_34['complete'],
+            'order': mom_34['orders'],
+            'ctr': mom_34['ctr'],
+            'lead_rate': mom_34['lead_rate'],
+            'friend_rate': mom_34['friend_rate'],
+            'attend_rate': mom_34['attend_rate'],
+            'complete_rate': mom_34['complete_rate'],
+            'order_rate': mom_34['order_rate'],
+            'arpu': mom_34['arpu'],
+            'cvr_from_leads': mom_34['cvr_from_leads'],
+            'price_per_order': mom_34['price_per_order'],
+            'lead_gen_rate': mom_34['lead_gen_rate'],
+            'gmv': mom_34['gmv'],
+        },
+        'mom_45': {
+            'exposure': mom_45['曝光uv'],
+            'click': mom_45['点击uv'],
+            'lead': mom_45['leads'],
+            'friend': mom_45['add_friend'],
+            'attend': mom_45['attend'],
+            'complete': mom_45['complete'],
+            'order': mom_45['orders'],
+            'ctr': mom_45['ctr'],
+            'lead_rate': mom_45['lead_rate'],
+            'friend_rate': mom_45['friend_rate'],
+            'attend_rate': mom_45['attend_rate'],
+            'complete_rate': mom_45['complete_rate'],
+            'order_rate': mom_45['order_rate'],
+            'arpu': mom_45['arpu'],
+            'cvr_from_leads': mom_45['cvr_from_leads'],
+            'price_per_order': mom_45['price_per_order'],
+            'lead_gen_rate': mom_45['lead_gen_rate'],
+            'gmv': mom_45['gmv'],
         },
     },
 }
@@ -1234,7 +1290,7 @@ print(f"Resources: {len(resource_efficiency)}")
 print(f"Monthly summary 3月 leads: {m3_total['leads']}, 4月 leads: {m4_total['leads']}")
 print(f"Monthly summary 3月 GMV: {m3_total['gmv']:.0f}, 4月 GMV: {m4_total['gmv']:.0f}")
 if conversion_change:
-    top_change = max(conversion_change, key=lambda x: abs(x['mom']))
-    print(f"Top conversion change: {top_change['stage']} = {top_change['mom']:.1f}pp")
+    top_change = max(conversion_change, key=lambda x: abs(x.get('mom_45', x.get('mom_34', 0))))
+    print(f"Top conversion change: {top_change['stage']} = {top_change['mom_45']:.1f}pp")
 else:
     print("No conversion change data")

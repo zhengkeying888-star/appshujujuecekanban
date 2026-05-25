@@ -17,6 +17,10 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+# 企微推送
+sys.path.insert(0, str(Path(__file__).parent))
+from wecom_bot import send_weekly_report
+
 PROJECT_DIR = Path(__file__).parent.resolve()
 STATE_FILE = PROJECT_DIR / '.auto_report_state.json'
 LAST_DOC_FILE = PROJECT_DIR / '.last_weekly_doc.json'
@@ -101,11 +105,11 @@ def run_monthly_pipeline(env: dict) -> dict:
     """执行月报/看板流水线"""
     outputs = {}
 
-    print(">>> [1/5] generate_analysis.py — 数据清洗与聚合")
+    print(">>> [1/6] generate_analysis.py — 数据清洗与聚合")
     run_script("generate_analysis.py", env)
     outputs["dashboard_json"] = str(PROJECT_DIR / "data_analysis_output.json")
 
-    print(">>> [2/5] generate_dashboard_v2.py — 生成 BI 看板")
+    print(">>> [2/6] generate_dashboard_v2.py — 生成 BI 看板")
     run_script("generate_dashboard_v2.py", env)
     outputs["dashboard_html"] = str(PROJECT_DIR / "dashboard" / "v2" / "index.html")
 
@@ -116,21 +120,34 @@ def run_weekly_pipeline(env: dict) -> dict:
     """执行周报流水线"""
     outputs = {}
 
-    print(">>> [3/5] generate_weekly_report.py — 生成周报数据")
+    print(">>> [3/6] generate_weekly_report.py — 生成周报数据")
     run_script("generate_weekly_report.py", env)
     outputs["weekly_json"] = str(PROJECT_DIR / "weekly_report_data.json")
 
-    print(">>> [4/5] generate_weekly_charts.py — 生成周报图表")
+    print(">>> [4/6] generate_weekly_charts.py — 生成周报图表")
     run_script("generate_weekly_charts.py", env)
 
-    print(">>> [5/5] run_weekly_pipeline.py — 输出飞书周报文档")
+    print(">>> [5/6] run_weekly_pipeline.py — 输出飞书周报文档")
     run_script("run_weekly_pipeline.py", env)
 
     # 读取生成的文档链接
+    feishu_url = ''
     if LAST_DOC_FILE.exists():
         with open(LAST_DOC_FILE, 'r', encoding='utf-8') as f:
             doc_meta = json.load(f)
-        outputs["feishu_doc_url"] = doc_meta.get('url', '')
+        feishu_url = doc_meta.get('url', '')
+        outputs["feishu_doc_url"] = feishu_url
+
+    # 企微推送
+    weekly_json_path = PROJECT_DIR / 'weekly_report_data.json'
+    if weekly_json_path.exists():
+        with open(weekly_json_path, 'r', encoding='utf-8') as f:
+            weekly_data = json.load(f)
+        print(">>> [6/6] 企微推送 — 发送周报摘要")
+        ok = send_weekly_report(weekly_data, feishu_url=feishu_url)
+        outputs["wecom_sent"] = ok
+    else:
+        outputs["wecom_sent"] = False
 
     return outputs
 

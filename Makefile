@@ -15,6 +15,10 @@ help:
 	@echo "  make open          — 在浏览器打开本地看板"
 	@echo "  make push          — 提交并推送到 GitHub"
 	@echo ""
+	@echo "企微推送（需在环境变量配置 WECOM_BOT_WEBHOOK）:"
+	@echo "  make weekly-wecom  — 生成周报 + 推送企微"
+	@echo "  make full-wecom    — 完整流水线 + 推送企微"
+	@echo ""
 	@echo "Neon PostgreSQL 命令:"
 	@echo "  make neon-migrate  — 迁移本地 Excel 数据到 Neon"
 	@echo "  make neon-monthly  — 使用 Neon 数据源生成本地看板"
@@ -52,3 +56,10 @@ neon-weekly:
 
 neon-full:
 	USE_NEON=true $(PYTHON) pipeline_orchestrator.py --force
+
+# 企微推送（需在环境变量中配置 WECOM_BOT_WEBHOOK）
+weekly-wecom:
+	$(PYTHON) pipeline_orchestrator.py --weekly --force
+
+full-wecom:
+	$(PYTHON) pipeline_orchestrator.py --force

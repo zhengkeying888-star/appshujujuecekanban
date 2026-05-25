@@ -17,7 +17,7 @@ def run_weekly_report():
     print("[1/4] 生成周报数据...")
     result = subprocess.run(
         [sys.executable, '/Users/zhengkeying/agent teams作业/generate_weekly_report.py'],
-        capture_output=True, text=True
+        capture_output=True, text=True, env={**os.environ}
     )
     if result.returncode != 0:
         print(f"ERROR: {result.stderr}")

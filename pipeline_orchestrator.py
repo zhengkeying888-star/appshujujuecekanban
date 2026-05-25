@@ -137,10 +137,14 @@ def run_weekly_pipeline(env: dict) -> dict:
 
 def run_pipeline(force: bool = False, weekly: bool = True, monthly: bool = True) -> dict:
     """执行完整报告流水线"""
+    use_neon = os.environ.get('USE_NEON', 'false').lower() == 'true'
+    use_feishu = os.environ.get('USE_FEISHU', 'false').lower() == 'true' and not use_neon
+    source_name = "Neon PostgreSQL" if use_neon else ("飞书 Base" if use_feishu else "本地 Excel")
+
     print("=" * 60)
     print("APP 线索广告位 — 自动报告流水线")
     print(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"数据源: 飞书 Base (USE_FEISHU=true)")
+    print(f"数据源: {source_name}")
     print(f"模式: force={force}, weekly={weekly}, monthly={monthly}")
     print("=" * 60)
     print()
@@ -158,7 +162,11 @@ def run_pipeline(force: bool = False, weekly: bool = True, monthly: bool = True)
         print("[FORCE] 跳过变化检测，强制执行")
 
     # 2. 设置环境变量
-    env = {"USE_FEISHU": "true"}
+    env = {}
+    if use_neon:
+        env["USE_NEON"] = "true"
+    elif use_feishu:
+        env["USE_FEISHU"] = "true"
     outputs = {}
 
     try:

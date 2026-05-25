@@ -47,3 +47,5 @@ base_import/
 
 # Cleaned CSVs for Feishu import
 *.clean.csv
+.vercel
+.env*.local

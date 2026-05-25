@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 
 USE_FEISHU = os.environ.get('USE_FEISHU', 'false').lower() == 'true'
+USE_NEON = os.environ.get('USE_NEON', 'false').lower() == 'true'
 
 # ============================================================
 # 0. 目标配置（请按实际业务目标更新）
@@ -45,14 +46,29 @@ if USE_FEISHU:
         '2026-05': ds.read_frontend_data('2026-05'),
     }
     df_mau = ds.read_mau_data()
+elif USE_NEON:
+    from neon_reader import NeonDataSource
+    ds = NeonDataSource()
+    df_backend = ds.read_backend_data_fast('2026-03')
+    df_backend = pd.concat([df_backend, ds.read_backend_data_fast('2026-04')], ignore_index=True)
+    df_backend = pd.concat([df_backend, ds.read_backend_data_fast('2026-05')], ignore_index=True)
+    ad_data = {
+        '2026-03': ds.read_frontend_data('2026-03'),
+        '2026-04': ds.read_frontend_data('2026-04'),
+        '2026-05': ds.read_frontend_data('2026-05'),
+    }
+    df_mau = ds.read_mau_data()
 else:
-    # 后链路数据（3-5月合并）
-    df_backend = pd.read_excel('/Users/zhengkeying/agent teams作业/更新4-5月app数据.xlsx')
+    # 后链路数据：3-4月从旧文件读取，5月从新文件读取（更新到5.24）
+    df_backend_old = pd.read_excel('/Users/zhengkeying/agent teams作业/更新4-5月app数据.xlsx')
+    df_backend_old = df_backend_old[df_backend_old['stat_month'] != '2026-05']  # 去掉旧5月数据
+    df_backend_new = pd.read_excel('/Users/zhengkeying/agent teams作业/APP线索后链路5.1-24.xlsx')
+    df_backend = pd.concat([df_backend_old, df_backend_new], ignore_index=True)
     # 前链路数据（按月分文件）
     ad_data = {
         '2026-03': pd.read_excel('/Users/zhengkeying/agent teams作业/APP广告位明细3月汇总.xlsx'),
         '2026-04': pd.read_excel('/Users/zhengkeying/agent teams作业/4月广告位明细.xlsx'),
-        '2026-05': pd.read_excel('/Users/zhengkeying/agent teams作业/5.1-17广告位明细.xlsx'),
+        '2026-05': pd.read_excel('/Users/zhengkeying/agent teams作业/app广告明细数据5.1-5.24.xlsx'),
     }
     df_mau = pd.read_excel('/Users/zhengkeying/agent teams作业/mau_data_3_4_5.xlsx')
 

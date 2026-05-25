@@ -4,6 +4,7 @@ import numpy as np
 import os
 
 USE_FEISHU = os.environ.get('USE_FEISHU', 'false').lower() == 'true'
+USE_NEON = os.environ.get('USE_NEON', 'false').lower() == 'true'
 
 if USE_FEISHU:
     from feishu_reader import FeishuDataSource
@@ -16,14 +17,28 @@ if USE_FEISHU:
     m5_ad = ds.read_frontend_data('2026-05')
     mau_df = ds.read_mau_data()
     cat_type_df = ds.read_category_mapping()
+elif USE_NEON:
+    from neon_reader import NeonDataSource
+    ds = NeonDataSource()
+    df_detail = ds.read_backend_data('2026-03')
+    df_detail = pd.concat([df_detail, ds.read_backend_data('2026-04')], ignore_index=True)
+    df_detail = pd.concat([df_detail, ds.read_backend_data('2026-05')], ignore_index=True)
+    m3_ad = ds.read_frontend_data('2026-03')
+    m4_ad = ds.read_frontend_data('2026-04')
+    m5_ad = ds.read_frontend_data('2026-05')
+    mau_df = ds.read_mau_data()
+    cat_type_df = ds.read_category_mapping()
 else:
     # 前链路数据（曝光、点击、售卖页浏览）
     m3_ad = pd.read_excel('/Users/zhengkeying/agent teams作业/APP广告位明细3月汇总.xlsx')
     m4_ad = pd.read_excel('/Users/zhengkeying/agent teams作业/4月广告位明细.xlsx')
-    m5_ad = pd.read_excel('/Users/zhengkeying/agent teams作业/5.1-17广告位明细.xlsx')
+    m5_ad = pd.read_excel('/Users/zhengkeying/agent teams作业/app广告明细数据5.1-5.24.xlsx')
 
     # 后链路数据（线索、好友、到课、完课、首单）
-    df_detail = pd.read_excel('/Users/zhengkeying/agent teams作业/更新4-5月app数据.xlsx')
+    df_detail_old = pd.read_excel('/Users/zhengkeying/agent teams作业/更新4-5月app数据.xlsx')
+    df_detail_old = df_detail_old[df_detail_old['stat_month'] != '2026-05']
+    df_detail_new = pd.read_excel('/Users/zhengkeying/agent teams作业/APP线索后链路5.1-24.xlsx')
+    df_detail = pd.concat([df_detail_old, df_detail_new], ignore_index=True)
 
     # MAU数据
     mau_df = pd.read_excel('/Users/zhengkeying/agent teams作业/mau_data_3_4_5.xlsx')

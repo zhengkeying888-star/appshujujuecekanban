@@ -64,6 +64,10 @@ python3 pipeline_orchestrator.py --weekly --force
 ├── generate_weekly_report.py     # 周报数据生成器 → weekly_report_data.json
 ├── generate_weekly_charts.py     # 周报图表生成器 → output/chart-html/
 ├── feishu_reader.py              # 飞书 Base 数据读取封装
+├── neon_reader.py                # Neon PostgreSQL 数据读取封装
+├── db.py                         # 数据库连接管理（psycopg v3）
+├── schema.sql                    # PostgreSQL 建表语句
+├── migrate_to_neon.py            # 本地 Excel → Neon 数据迁移脚本
 ├── feishu_config.py              # Base 表配置（table_id / token）
 ├── cache_base_data.py            # Base → 本地 CSV 缓存
 ├── dashboard/v2/index.html       # 最终交付物（本地看板）
@@ -73,7 +77,9 @@ python3 pipeline_orchestrator.py --weekly --force
 
 ## 数据源
 
-### 模式 A：飞书 Base（推荐，团队协作）
+支持三种数据源模式，通过环境变量切换：
+
+### 模式 A：飞书 Base（团队协作）
 
 数据存储在飞书多维表格，支持多人协作更新：
 
@@ -93,14 +99,59 @@ Base 表清单：
 | `daily_dau` | 日活数据 |
 | `category_mapping` | 品类映射 |
 
-### 模式 B：本地 Excel（单机运行）
+### 模式 B：Neon PostgreSQL（推荐，Vercel 部署）
 
-不使用飞书 Base，直接读取本地 Excel 文件。需确保以下文件存在：
+数据存储在 Vercel 集成的 Neon 数据库，支持云端查询和长期归档：
+
+**首次配置步骤：**
+
+1. 在 [Vercel Dashboard](https://vercel.com/dashboard) → Storage → 创建 Neon 数据库
+2. 复制 `DATABASE_URL`（确保是 **pooled** 连接串，含 `-pooler.`）
+3. 设置环境变量并迁移数据：
+
+```bash
+# 设置连接字符串
+export DATABASE_URL='postgresql://user:pass@host-pooler.neon.tech/dbname?sslmode=require'
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 迁移本地 Excel 数据到 Neon（一次性）
+make neon-migrate
+
+# 后续运行流水线
+make neon-full
+```
+
+数据库表结构：
+
+| 表名 | 说明 |
+|------|------|
+| `backend_leads` | 后链路线索明细（核心字段 + JSONB 扩展） |
+| `frontend_daily` | 前链路日汇总 |
+| `mau_monthly` | 月活数据 |
+| `daily_dau` | 日活数据 |
+| `category_mapping` | 品类映射 |
+
+### 模式 C：本地 Excel（单机运行）
+
+不使用任何外部数据源，直接读取本地 Excel 文件。需确保以下文件存在：
 
 - `更新4-5月app数据.xlsx` — 后链路数据
 - `APP广告位明细3月汇总.xlsx` / `4月广告位明细.xlsx` / `5.1-17广告位明细.xlsx` — 前链路数据
 - `mau_data_3_4_5.xlsx` — 月活数据
 - `日维度日活3-5月.xlsx` — 日活数据
+
+## 命令速查
+
+| 命令 | 说明 |
+|------|------|
+| `make cache` | 缓存飞书 Base 数据到本地 CSV |
+| `make monthly` / `make weekly` / `make full` | 飞书 Base 模式运行 |
+| `make neon-migrate` | 本地 Excel → Neon 迁移 |
+| `make neon-monthly` / `make neon-weekly` / `make neon-full` | Neon 模式运行 |
+| `make open` | 打开本地看板 |
+| `make push` | 提交并推送到 GitHub |
 
 ## 流水线说明
 

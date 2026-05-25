@@ -17,13 +17,35 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-# 企微推送
-sys.path.insert(0, str(Path(__file__).parent))
-from wecom_bot import send_weekly_report
-
 PROJECT_DIR = Path(__file__).parent.resolve()
 STATE_FILE = PROJECT_DIR / '.auto_report_state.json'
 LAST_DOC_FILE = PROJECT_DIR / '.last_weekly_doc.json'
+
+
+def _load_env_file():
+    """加载 .env 或 .env.local（无需 python-dotenv）"""
+    for env_name in ('.env.local', '.env'):
+        env_path = PROJECT_DIR / env_name
+        if not env_path.exists():
+            continue
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+
+
+_load_env_file()
+
+# 企微推送
+sys.path.insert(0, str(PROJECT_DIR))
+from wecom_bot import send_weekly_report
 
 # 各数据源表名（与 feishu_config.py 对应）
 DATA_TABLES = [
